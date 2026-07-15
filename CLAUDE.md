@@ -3,7 +3,7 @@ name: bogoslavAnalytics
 version: 2.0.0
 created: 2026-07-15
 apps:
-  - dir: apps, type: go, agent: go-dev
+  - dir: ., type: go, agent: go-dev
 methodologies: []
 -->
 
@@ -18,10 +18,9 @@ methodologies: []
 
 ## Сборка и тесты
 
-Go-модуль имеет корень в `apps/`, **не** в корне репозитория. Все команды `go` и `make` выполняются из `apps/`.
+Go-модуль лежит в корне репозитория. Все команды `go` и `make` выполняются из корня.
 
 ```bash
-cd apps
 make build   # собирает bogoslav-cli, bogoslav-mcp, bogoslav-skills в bin/
 make test    # go test ./...
 make lint    # go vet ./...
@@ -31,7 +30,6 @@ make fmt     # gofmt -w .
 Запуск одного теста:
 
 ```bash
-cd apps
 go test ./internal/<pkg> -run '<TestName>' -v
 ```
 
