@@ -1,13 +1,13 @@
-package main
+package clitree
 
 import "github.com/spf13/cobra"
 
-// newRootCmd builds the bogoslav-cli command tree: exactly six commands,
+// NewRootCmd builds the bogoslav-cli command tree: exactly six commands,
 // one per apps/internal/app use case (TZ.md section 7.3). bogoslav-skills
 // (a later wave) generates SKILL.md by walking this tree, so command
 // names, flag names and help text are user-facing product surface, not
 // decoration.
-func newRootCmd() *cobra.Command {
+func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "bogoslav-cli",
 		Short: "GitLab review-activity analytics: find, fetch, label, filter, and summarize merge request comments",

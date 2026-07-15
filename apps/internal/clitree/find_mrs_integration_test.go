@@ -1,4 +1,4 @@
-package main
+package clitree
 
 import (
 	"bytes"
@@ -50,7 +50,7 @@ func TestFindMRs_pointModeEndToEnd(t *testing.T) {
 	dir := t.TempDir()
 	outFile := filepath.Join(dir, "result.yaml")
 
-	cmd := newRootCmd()
+	cmd := NewRootCmd()
 	var stderr bytes.Buffer
 	cmd.SetErr(&stderr)
 	cmd.SetOut(new(bytes.Buffer))

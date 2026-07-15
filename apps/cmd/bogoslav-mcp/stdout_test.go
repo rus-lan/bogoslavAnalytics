@@ -12,15 +12,20 @@ import (
 // TestPackage_neverWritesToStdoutDirectly is the acceptance check for
 // TZ.md section 7.1's single easiest way to break an stdio MCP server:
 // stdout carries the protocol stream exclusively (mcp.StdioTransport
-// owns it), so nothing in this package's own source may reference
+// owns it), so nothing in this binary's own source may reference
 // os.Stdout or call fmt.Print/fmt.Println/fmt.Printf directly. It parses
-// every non-test .go file in this directory and fails on the first such
-// reference, so a stray fmt.Println added later breaks this test instead
-// of silently corrupting the protocol stream.
+// every non-test .go file in this directory, plus apps/internal/mcptool
+// (the tool input/output types this binary imports and links in), and
+// fails on the first such reference, so a stray fmt.Println added later
+// breaks this test instead of silently corrupting the protocol stream.
 func TestPackage_neverWritesToStdoutDirectly(t *testing.T) {
-	files, err := filepath.Glob("*.go")
-	if err != nil {
-		t.Fatalf("filepath.Glob() error = %v", err)
+	var files []string
+	for _, pattern := range []string{"*.go", "../../internal/mcptool/*.go"} {
+		matches, err := filepath.Glob(pattern)
+		if err != nil {
+			t.Fatalf("filepath.Glob(%q) error = %v", pattern, err)
+		}
+		files = append(files, matches...)
 	}
 
 	forbiddenCalls := map[string]bool{

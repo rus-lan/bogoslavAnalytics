@@ -1,4 +1,4 @@
-package main
+package clitree
 
 import "testing"
 
@@ -18,13 +18,13 @@ func TestNewRootCmd_hasExactlySixExpectedCommands(t *testing.T) {
 		"get-stats",
 	}
 
-	cmds := newRootCmd().Commands()
+	cmds := NewRootCmd().Commands()
 	if len(cmds) != len(want) {
 		names := make([]string, len(cmds))
 		for i, c := range cmds {
 			names[i] = c.Name()
 		}
-		t.Fatalf("newRootCmd().Commands() = %v, want exactly %v", names, want)
+		t.Fatalf("NewRootCmd().Commands() = %v, want exactly %v", names, want)
 	}
 
 	got := make(map[string]bool, len(cmds))
@@ -33,7 +33,7 @@ func TestNewRootCmd_hasExactlySixExpectedCommands(t *testing.T) {
 	}
 	for _, name := range want {
 		if !got[name] {
-			t.Errorf("newRootCmd() is missing command %q", name)
+			t.Errorf("NewRootCmd() is missing command %q", name)
 		}
 	}
 }

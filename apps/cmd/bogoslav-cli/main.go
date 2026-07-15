@@ -10,13 +10,15 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/rus-lan/bogoslav-analytics/apps/internal/clitree"
 )
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := newRootCmd().ExecuteContext(ctx); err != nil {
+	if err := clitree.NewRootCmd().ExecuteContext(ctx); err != nil {
 		os.Exit(1)
 	}
 }

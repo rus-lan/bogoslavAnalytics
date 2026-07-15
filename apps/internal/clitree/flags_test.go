@@ -1,4 +1,4 @@
-package main
+package clitree
 
 import (
 	"testing"

@@ -10,6 +10,7 @@ import (
 	"github.com/rus-lan/bogoslav-analytics/apps/internal/artifact"
 	"github.com/rus-lan/bogoslav-analytics/apps/internal/classify"
 	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
+	"github.com/rus-lan/bogoslav-analytics/apps/internal/mcptool"
 )
 
 // writeFixtureCommentList writes a minimal, valid comment_list artifact
@@ -56,7 +57,7 @@ func TestSaveLabels_outOfTaxonomyLabelWritesNoFileAndReturnsError(t *testing.T) 
 	commentListPath := writeFixtureCommentList(t, dir)
 
 	s := &toolServer{}
-	_, out, err := s.saveLabels(context.Background(), nil, SaveLabelsInput{
+	_, out, err := s.saveLabels(context.Background(), nil, mcptool.SaveLabelsInput{
 		FromArtifact: commentListPath,
 		Labels:       []classify.NoteLabel{{NoteID: 1, Label: "not-a-real-label"}},
 		Tool:         "test-tool",
@@ -91,7 +92,7 @@ func TestSaveLabels_validLabelingWritesArtifact(t *testing.T) {
 	commentListPath := writeFixtureCommentList(t, dir)
 
 	s := &toolServer{}
-	_, out, err := s.saveLabels(context.Background(), nil, SaveLabelsInput{
+	_, out, err := s.saveLabels(context.Background(), nil, mcptool.SaveLabelsInput{
 		FromArtifact: commentListPath,
 		Labels:       []classify.NoteLabel{{NoteID: 1, Label: "bug"}},
 		Tool:         "test-tool",

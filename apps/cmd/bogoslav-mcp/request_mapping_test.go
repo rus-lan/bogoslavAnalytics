@@ -7,6 +7,7 @@ import (
 	"github.com/rus-lan/bogoslav-analytics/apps/internal/artifact"
 	"github.com/rus-lan/bogoslav-analytics/apps/internal/classify"
 	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
+	"github.com/rus-lan/bogoslav-analytics/apps/internal/mcptool"
 )
 
 // TestNewFindMRsRequest_mapsEveryField is the acceptance check for
@@ -15,7 +16,7 @@ import (
 // (point mode, TZ.md sections 1.2, 7.2), and cache_ttl_seconds/refresh
 // become app.CacheOptions.
 func TestNewFindMRsRequest_mapsEveryField(t *testing.T) {
-	in := FindMRsInput{
+	in := mcptool.FindMRsInput{
 		User:            "alice",
 		From:            "2026-01-01",
 		To:              "2026-06-30",
@@ -78,7 +79,7 @@ func TestNewFindMRsRequest_mapsEveryField(t *testing.T) {
 // GitLab merge request iids start at 1, so 0 unambiguously means "not
 // set" (TZ.md sections 1.2, 7.2).
 func TestNewFindMRsRequest_zeroMRMeansNoPointMode(t *testing.T) {
-	in := FindMRsInput{User: "1", From: "2026-01-01", To: "2026-01-02"}
+	in := mcptool.FindMRsInput{User: "1", From: "2026-01-01", To: "2026-01-02"}
 
 	req, err := newFindMRsRequest(in, "https://gitlab.example.com")
 	if err != nil {
@@ -92,7 +93,7 @@ func TestNewFindMRsRequest_zeroMRMeansNoPointMode(t *testing.T) {
 // TestNewFindMRsRequest_rejectsBadFormat confirms an unknown format
 // value is rejected before an app.FindMRsRequest is even built.
 func TestNewFindMRsRequest_rejectsBadFormat(t *testing.T) {
-	in := FindMRsInput{User: "1", From: "2026-01-01", To: "2026-01-02", Format: "csv"}
+	in := mcptool.FindMRsInput{User: "1", From: "2026-01-01", To: "2026-01-02", Format: "csv"}
 
 	if _, err := newFindMRsRequest(in, "https://gitlab.example.com"); err == nil {
 		t.Error("newFindMRsRequest() error = nil, want an error for an unsupported format")
@@ -102,7 +103,7 @@ func TestNewFindMRsRequest_rejectsBadFormat(t *testing.T) {
 // TestNewGetCommentsRequest_mapsEveryField is the acceptance check for
 // TZ.md section 7.3 on the get_comments tool.
 func TestNewGetCommentsRequest_mapsEveryField(t *testing.T) {
-	in := GetCommentsInput{
+	in := mcptool.GetCommentsInput{
 		User:            "alice",
 		From:            "2026-01-01",
 		To:              "2026-06-30",
@@ -139,7 +140,7 @@ func TestNewGetCommentsRequest_mapsEveryField(t *testing.T) {
 // passes through as-is: it is already app.GetCommentsRequest.MRs' exact
 // type (artifact.MRRef), so no adaptation happens here.
 func TestNewGetCommentsRequest_mapsExplicitMRs(t *testing.T) {
-	in := GetCommentsInput{
+	in := mcptool.GetCommentsInput{
 		User: "1", From: "2026-01-01", To: "2026-01-02",
 		MRs: []artifact.MRRef{{ProjectID: 123, MRIID: 77}},
 	}
@@ -157,7 +158,7 @@ func TestNewGetCommentsRequest_mapsExplicitMRs(t *testing.T) {
 // for TZ.md section 7.3 on the get_classify_batch tool.
 func TestNewGetClassifyBatchRequest_mapsEveryField(t *testing.T) {
 	tax := classify.DefaultTaxonomy()
-	in := GetClassifyBatchInput{
+	in := mcptool.GetClassifyBatchInput{
 		FromArtifact: "artifacts/comment_list_abc.yaml",
 		Model:        "glm-5.2",
 		Taxonomy:     &tax,
@@ -186,7 +187,7 @@ func TestNewGetClassifyBatchRequest_mapsEveryField(t *testing.T) {
 // classifier check (TZ.md section 4.3).
 func TestNewSaveLabelsRequest_defaultsClassifiedAtToNow(t *testing.T) {
 	before := time.Now()
-	req, err := newSaveLabelsRequest(SaveLabelsInput{
+	req, err := newSaveLabelsRequest(mcptool.SaveLabelsInput{
 		FromArtifact: "artifacts/comment_list_abc.yaml",
 		Labels:       []classify.NoteLabel{{NoteID: 1, Label: "bug"}},
 		Tool:         "opencode",
@@ -204,7 +205,7 @@ func TestNewSaveLabelsRequest_defaultsClassifiedAtToNow(t *testing.T) {
 // TestNewSaveLabelsRequest_parsesExplicitClassifiedAt confirms an
 // explicit RFC 3339 classified_at is parsed and used as-is.
 func TestNewSaveLabelsRequest_parsesExplicitClassifiedAt(t *testing.T) {
-	req, err := newSaveLabelsRequest(SaveLabelsInput{
+	req, err := newSaveLabelsRequest(mcptool.SaveLabelsInput{
 		FromArtifact: "artifacts/comment_list_abc.yaml",
 		Labels:       []classify.NoteLabel{{NoteID: 1, Label: "bug"}},
 		Tool:         "opencode",
@@ -223,7 +224,7 @@ func TestNewSaveLabelsRequest_parsesExplicitClassifiedAt(t *testing.T) {
 // TestNewSaveLabelsRequest_rejectsBadClassifiedAt confirms a malformed
 // classified_at is rejected before app.SaveLabels ever runs.
 func TestNewSaveLabelsRequest_rejectsBadClassifiedAt(t *testing.T) {
-	_, err := newSaveLabelsRequest(SaveLabelsInput{
+	_, err := newSaveLabelsRequest(mcptool.SaveLabelsInput{
 		FromArtifact: "artifacts/comment_list_abc.yaml",
 		Labels:       []classify.NoteLabel{{NoteID: 1, Label: "bug"}},
 		Tool:         "opencode",
@@ -238,7 +239,7 @@ func TestNewSaveLabelsRequest_rejectsBadClassifiedAt(t *testing.T) {
 // TestNewFilterCommentsRequest_mapsEveryField is the acceptance check
 // for TZ.md section 7.3 on the filter_comments tool.
 func TestNewFilterCommentsRequest_mapsEveryField(t *testing.T) {
-	in := FilterCommentsInput{
+	in := mcptool.FilterCommentsInput{
 		FromArtifact: "artifacts/labeled_comments_abc.yaml",
 		Labels:       []string{"bug", "style"},
 		Group:        "my-group",
@@ -281,7 +282,7 @@ func TestNewFilterCommentsRequest_mapsEveryField(t *testing.T) {
 // TestNewGetStatsRequest_mapsEveryField is the acceptance check for
 // TZ.md section 7.3 on the get_stats tool.
 func TestNewGetStatsRequest_mapsEveryField(t *testing.T) {
-	req, err := newGetStatsRequest(GetStatsInput{
+	req, err := newGetStatsRequest(mcptool.GetStatsInput{
 		ArtifactPath: "artifacts/mr_list_abc.yaml",
 		ArtifactsDir: "out",
 		Format:       "yaml",
@@ -303,7 +304,7 @@ func TestNewGetStatsRequest_mapsEveryField(t *testing.T) {
 // TestNewGetStatsRequest_rejectsBadFormat confirms an unknown format
 // value is rejected before an app.GetStatsRequest is even built.
 func TestNewGetStatsRequest_rejectsBadFormat(t *testing.T) {
-	if _, err := newGetStatsRequest(GetStatsInput{ArtifactPath: "x", Format: "csv"}); err == nil {
+	if _, err := newGetStatsRequest(mcptool.GetStatsInput{ArtifactPath: "x", Format: "csv"}); err == nil {
 		t.Error("newGetStatsRequest() error = nil, want an error for an unsupported format")
 	}
 }

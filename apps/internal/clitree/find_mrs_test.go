@@ -1,4 +1,4 @@
-package main
+package clitree
 
 import (
 	"errors"
@@ -135,7 +135,7 @@ func TestFindMRs_mrWithoutProjectFailsWithClearError(t *testing.T) {
 	t.Setenv("GITLAB_TOKEN", "dummy-token")
 	t.Setenv("GITLAB_URL", "")
 
-	cmd := newRootCmd()
+	cmd := NewRootCmd()
 	cmd.SetArgs([]string{"find-mrs", "--user", "42", "--from", "2026-01-01", "--to", "2026-06-30", "--mr", "9"})
 	cmd.SetOut(io.Discard)
 	cmd.SetErr(io.Discard)

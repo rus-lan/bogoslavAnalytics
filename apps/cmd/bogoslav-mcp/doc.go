@@ -8,39 +8,24 @@
 //
 // # contracts/openapi.yaml (TZ.md section 10)
 //
-// This package's six *Input/*Output types are the ones mcp.AddTool
-// infers a tool's JSON Schema from (github.com/google/jsonschema-go,
-// draft 2020-12; see schema_test.go). TZ.md section 10 asks whether the
-// exact same Go types can also feed a build-time
-// jsonschema.For[T](&jsonschema.ForOptions{}) call for
-// contracts/openapi.yaml, so the two never drift.
-//
-// Mechanically, yes: jsonschema.For/ForType is a pure function of the Go
-// type, so calling it again on the same type produces an identical
-// schema. But as written today, that second call is not actually
-// reachable from anywhere else: these types live in package main
-// (apps/cmd/bogoslav-mcp), and Go does not allow importing a main
-// package. A future contracts/ generator (its own package, per TZ.md
-// section 10's "go generate" command) cannot import FindMRsInput,
-// GetCommentsInput, and so on from here.
-//
-// Closing that gap -- something this task's scope (touch only
-// apps/cmd/bogoslav-mcp/) does not permit -- needs the six *Input types
-// (and any *Output type that is registered with a concrete, not "any",
-// Out type parameter) moved to an importable package, for example a new
-// apps/internal/mcptool/, imported by both this package's AddTool calls
-// and the contracts/ generator. Until that move happens, "one
-// generation, two consumers" (TZ.md section 10) is a design goal this
-// package satisfies for its own registration, but not yet a fact
-// contracts/openapi.yaml can rely on.
+// This package's tool handlers take their input as one of
+// apps/internal/mcptool's six *Input types -- the ones mcp.AddTool infers
+// a tool's JSON Schema from (github.com/google/jsonschema-go, draft
+// 2020-12; see apps/internal/mcptool/schema_test.go). Those types (and
+// GetClassifyBatchOutput) live in mcptool, not here, precisely so a
+// future contracts/ generator (its own package, per TZ.md section 10's
+// "go generate" command) can import them too and call
+// jsonschema.For[T](&jsonschema.ForOptions{}) on the exact same Go types
+// this package's AddTool calls use: "one generation, two consumers" is a
+// fact of the import graph, not a coincidence.
 //
 // GetClassifyBatchOutput is a second, independent wrinkle for that same
-// future generator, documented on its own type: it embeds
-// *jsonschema.Schema, whose own Go type is self-referential (Defs,
+// generator, documented on its own type in apps/internal/mcptool: it
+// embeds *jsonschema.Schema, whose own Go type is self-referential (Defs,
 // Properties, Items, ... all point back to Schema), so jsonschema.For
 // cannot infer a schema for a type containing it at all -- not even from
 // an importable package. AddTool works around this today by registering
-// the tool with an "any" Out type parameter (see tool_get_classify_batch.go);
-// a future generator will need the same workaround, or a hand-written
-// schema for that one output shape.
+// the tool with an "any" Out type parameter (see
+// tool_get_classify_batch.go); a future generator will need the same
+// workaround, or a hand-written schema for that one output shape.
 package main
