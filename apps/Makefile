@@ -1,4 +1,4 @@
-.PHONY: build test lint fmt
+.PHONY: build test lint fmt contracts
 
 build:
 	mkdir -p bin
@@ -14,3 +14,11 @@ lint:
 
 fmt:
 	gofmt -w .
+
+# contracts regenerates ../contracts/openapi.yaml from the Go types in
+# internal/mcptool and internal/artifact (TZ.md section 10). Run this
+# after changing any of those types and commit the result -- `go test
+# ./internal/contracts/...` fails if the committed file drifts from
+# what this target produces.
+contracts:
+	go run ./cmd/gen-contracts -out ../contracts/openapi.yaml
