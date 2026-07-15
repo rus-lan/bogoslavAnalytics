@@ -15,10 +15,10 @@ func NewRootCmd() *cobra.Command {
 GitLab user leave more than N comments -- with filters by date, group and
 repository -- and carries that answer through a pipeline of further steps.
 
-Each command below is a thin wrapper over exactly one function in
-apps/internal/app (TZ.md section 7.3): it parses flags, builds a request,
-calls that function, and renders the result. bogoslav-mcp exposes the exact
-same six operations as MCP tools over the same functions.
+Each command below is a thin wrapper over exactly one function: it parses
+flags, builds a request, calls that function, and renders the result.
+bogoslav-mcp exposes the exact same six operations as MCP tools over the
+same functions.
 
 Pipeline: find-mrs -> get-comments -> get-classify-batch -> save-labels ->
 filter-comments -> get-stats. Any step also runs on its own: get-comments,

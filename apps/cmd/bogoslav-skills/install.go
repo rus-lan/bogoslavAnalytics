@@ -40,7 +40,7 @@ func newInstallCmd() *cobra.Command {
 .agents/skills/bogoslav/ (the same step generate performs) and then, for
 every target except aider, merges an MCP server registration for
 bogoslav-mcp into that target's own config file -- never overwriting it,
-only adding or updating the "%s" entry (TZ.md section 9.3.2).
+only adding or updating the "%s" entry.
 
 aider has no MCP support at all: --target aider instead writes
 CONVENTIONS.md (generated from the same command tree as SKILL.md) and

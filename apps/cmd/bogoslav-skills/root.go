@@ -9,11 +9,11 @@ func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "bogoslav-skills",
 		Short: "Generate the bogoslav Agent Skill and install it, plus the bogoslav-mcp registration, into an agent tool",
-		Long: `bogoslav-skills does two jobs (TZ.md section 9):
+		Long: `bogoslav-skills does two jobs:
 
-  1. generate SKILL.md by walking apps/internal/clitree's live cobra
-     command tree -- the same tree bogoslav-cli runs -- so command names,
-     flags, and help text can never drift from the CLI.
+  1. generate SKILL.md from bogoslav-cli's own live command tree -- the
+     same tree bogoslav-cli runs -- so command names, flags, and help
+     text can never drift from the CLI.
   2. install that skill, and the bogoslav-mcp MCP server registration,
      into a target agent tool in one command.
 

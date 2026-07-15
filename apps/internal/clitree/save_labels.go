@@ -34,8 +34,8 @@ func newSaveLabelsCmd() *cobra.Command {
 		Long: `save-labels validates a labeling result -- produced by the calling
 agent, never by this command -- against the comment_list batch it was
 produced for and the taxonomy, and only on success writes artifact-3
-(labeled_comments) with the mandatory classifier provenance block (TZ.md
-section 8.3). A labeling that fails validation (a label outside the
+(labeled_comments) with the mandatory classifier provenance block. A
+labeling that fails validation (a label outside the
 taxonomy, an extra, missing, or duplicate note_id) writes nothing: every
 violation is reported, not just the first.
 

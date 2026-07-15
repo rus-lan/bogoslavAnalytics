@@ -32,7 +32,46 @@ find-mrs  →  get-comments  →  get-classify-batch  →  save-labels  →  fil
 
 ## 2. Установка и настройка
 
-### Сборка
+### Готовые бинари (`go install`)
+
+Три бинаря публикуются под тегом `apps/v0.1.0` как обычные Go-команды — отдельного GitHub Release нет и не требуется, публичному прокси модулей (`proxy.golang.org`) достаточно самого git-тега:
+
+```bash
+go install github.com/rus-lan/bogoslavAnalytics/apps/cmd/bogoslav-cli@latest
+go install github.com/rus-lan/bogoslavAnalytics/apps/cmd/bogoslav-mcp@latest
+go install github.com/rus-lan/bogoslavAnalytics/apps/cmd/bogoslav-skills@latest
+```
+
+`@latest` берёт самый свежий тег; чтобы закрепиться на конкретной версии — `@v0.1.0` вместо `@latest`. Проверено вживую с чистого `GOBIN` через публичный прокси:
+
+```
+$ GOPROXY=proxy.golang.org go list -m github.com/rus-lan/bogoslavAnalytics/apps@v0.1.0
+github.com/rus-lan/bogoslavAnalytics/apps v0.1.0
+
+$ go install github.com/rus-lan/bogoslavAnalytics/apps/cmd/bogoslav-cli@v0.1.0
+go: downloading github.com/rus-lan/bogoslavAnalytics/apps v0.1.0
+```
+
+**Бинари появляются в `$GOBIN`**, а если эта переменная не задана — в `$GOPATH/bin` (обычно `~/go/bin`). Этот каталог должен быть в `PATH` — если после успешной установки команда «не находится», в подавляющем большинстве случаев дело именно в этом.
+
+**Минимальная версия Go — 1.25.0.** Это не пожелание, а жёсткий потолок зависимостей: `github.com/modelcontextprotocol/go-sdk v1.6.1` сам объявляет `go 1.25.0` в своём `go.mod`, и это самое высокое требование во всём графе зависимостей. На Go 1.21+ тулчейн умеет сам подтягивать нужную версию (первая установка будет заметно дольше), на более старых Go установка не соберётся вовсе.
+
+**Путь модуля регистрозависим** — `bogoslavAnalytics`, с заглавной `A`. Сам GitHub к регистру нечувствителен, поэтому опечатка вида `bogoslavanalytics` (строчными) всё равно достучится до репозитория и упадёт только на этапе разбора `go.mod`, с не самой очевидной ошибкой. Проверено вживую:
+
+```
+go: github.com/rus-lan/bogoslavanalytics/apps/cmd/bogoslav-cli@v0.1.0: version constraints conflict:
+	github.com/rus-lan/bogoslavanalytics/apps@v0.1.0: parsing go.mod:
+	module declares its path as: github.com/rus-lan/bogoslavAnalytics/apps
+	        but was required as: github.com/rus-lan/bogoslavanalytics/apps
+```
+
+Не перепечатывайте путь руками — копируйте.
+
+Тега достаточно: отдельного GitHub Release нет и он не нужен, прокси модулей работает по git-тегам напрямую. Оговорка по свежести: только что запушенный тег может не появиться в прокси до минуты; а если версию запрашивали ещё до появления тега — кеш прокси может отдавать «нет такой версии» до 30 минут, пока не истечёт (источник — FAQ proxy.golang.org).
+
+### Сборка из исходников
+
+Альтернатива для тех, кто разрабатывает сам инструмент, а не только пользуется им:
 
 ```bash
 cd apps
@@ -69,6 +108,17 @@ Error: connect to GitLab: gitlab: new client from env: gitlab: GITLAB_TOKEN is n
 ```
 
 **Важное предупреждение про reverse-proxy.** `--group`/`--project` принимают либо numeric id, либо путь (`my-group/my-repo`, в том числе вложенные подгруппы). Путь идёт в запрос URL-кодированным (`/` → `%2F`), как того требует сам GitLab. Если перед GitLab стоит обратный прокси (например, Apache), который декодирует `%2F` обратно в `/` до того, как запрос дойдёт до GitLab, — путь превращается в невалидный URL, и GitLab отвечает `404`, хотя группа/проект существуют. Это задокументированная ловушка самого GitLab, не баг этого инструмента. Обходной путь — передавать **numeric id** вместо пути: числовые id этой проблеме не подвержены.
+
+### Подключение к агентскому инструменту
+
+После установки бинарей одна команда прописывает skill и MCP-регистрацию `bogoslav-mcp` в целевой агентский инструмент:
+
+```bash
+bogoslav-skills install --target claude    # или opencode | kilo | cline | cursor
+bogoslav-skills install --all
+```
+
+Подробности — раздел 5: пять живых целей (`claude`, `opencode`, `kilo`, `cline`, `cursor`) получают `SKILL.md` и MCP-конфиг; `aider` MCP и Agent Skills не поддерживает вовсе и получает взамен только `CONVENTIONS.md`; Roo Code — архивный проект, целью установщика не является.
 
 ---
 

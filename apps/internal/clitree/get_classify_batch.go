@@ -49,9 +49,8 @@ func newGetClassifyBatchCmd() *cobra.Command {
 		Long: `get-classify-batch reads an existing comment_list artifact and hands
 back everything the calling agent needs to label it: the batch of comments,
 the taxonomy, the labeling result's JSON Schema, and a rendered prompt.
-get-classify-batch never labels anything itself and never calls an LLM
-(TZ.md section 8.1): the calling agent labels, and passes its result to
-save-labels.
+get-classify-batch never labels anything itself and never calls an LLM:
+the calling agent labels, and passes its result to save-labels.
 
 If an unchanged batch (same comments, same --model, same taxonomy version)
 already has a matching labeled_comments artifact, that is reported instead

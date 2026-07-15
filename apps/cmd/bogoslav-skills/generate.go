@@ -20,7 +20,7 @@ func newGenerateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "generate",
 		Short: "Write SKILL.md, generated from bogoslav-cli's command tree, without installing anything",
-		Long: `generate renders SKILL.md from apps/internal/clitree's live command
+		Long: `generate renders SKILL.md from bogoslav-cli's own live command
 tree -- the same tree bogoslav-cli itself runs -- and writes it to both
 .claude/skills/bogoslav/SKILL.md and .agents/skills/bogoslav/SKILL.md
 under --project-dir. It never touches an MCP config file: use install for
