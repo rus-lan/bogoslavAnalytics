@@ -57,8 +57,17 @@ type Client struct {
 // Option configures a Client built by NewClient.
 type Option func(*Client)
 
-// WithHTTPClient sets the underlying http.Client. The default is
-// http.DefaultClient.
+// WithHTTPClient sets the underlying http.Client. The default is a
+// plain *http.Client equivalent to http.DefaultClient (but a distinct
+// instance -- see NewClient).
+//
+// NewClient always overwrites h.CheckRedirect after every option runs,
+// with the redirect policy that keeps the auth header from leaking to
+// a different host (checkRedirect in transport.go). This is
+// deliberate: the auth header is this package's own secret, so this
+// package -- not the caller -- owns the decision about when it is safe
+// to forward across a redirect, regardless of what CheckRedirect (if
+// any) h already had.
 func WithHTTPClient(h *http.Client) Option {
 	return func(c *Client) { c.httpClient = h }
 }
@@ -87,10 +96,17 @@ func WithBackoff(base, cap time.Duration) Option {
 // GITLAB_TOKEN environment convention should use NewClientFromEnv.
 func NewClient(baseURL, token string, opts ...Option) *Client {
 	c := &Client{
-		baseURL:     strings.TrimRight(baseURL, "/"),
-		token:       token,
-		authHeader:  authHeaderName,
-		httpClient:  http.DefaultClient,
+		baseURL:    strings.TrimRight(baseURL, "/"),
+		token:      token,
+		authHeader: authHeaderName,
+		// A plain &http.Client{} has the exact same zero-value
+		// behavior as http.DefaultClient (which is defined as
+		// &http.Client{} too), but is a distinct instance: unlike
+		// http.DefaultClient, it is safe to set CheckRedirect on
+		// below without mutating a process-wide client some
+		// unrelated package elsewhere in the same binary might also
+		// be using.
+		httpClient:  &http.Client{},
 		limiter:     newLimiter(),
 		maxAttempts: defaultMaxAttempts,
 		backoffBase: defaultBackoffBase,
@@ -101,12 +117,17 @@ func NewClient(baseURL, token string, opts ...Option) *Client {
 	for _, opt := range opts {
 		opt(c)
 	}
+	// Always wired in last, after WithHTTPClient (if any) has had its
+	// say about which *http.Client to use: see checkRedirect's doc
+	// comment (transport.go) for what this protects and why it is not
+	// optional.
+	c.httpClient.CheckRedirect = c.checkRedirect
 	return c
 }
 
 // NewClientFromEnv builds a client from GITLAB_URL (default
-// https://gitlab.com) and GITLAB_TOKEN (required; scope read_user or api,
-// TZ.md section 2.5).
+// https://gitlab.com) and GITLAB_TOKEN (required; scope read_api, not
+// api -- this client only ever issues GETs; TZ.md section 2.5).
 func NewClientFromEnv(opts ...Option) (*Client, error) {
 	baseURL := os.Getenv("GITLAB_URL")
 	if baseURL == "" {

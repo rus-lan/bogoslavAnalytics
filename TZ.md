@@ -102,7 +102,7 @@
 ### 2.5. Конфигурация подключения
 
 - URL инстанса: переменная окружения `GITLAB_URL` (для gitlab.com можно опустить — тогда дефолт `https://gitlab.com`, `gitlab.NewClientFromEnv`).
-- Токен: переменная окружения `GITLAB_TOKEN` (обязательна — без неё `NewClientFromEnv` возвращает `gitlab.ErrMissingToken`). Требуемый scope: `read_user` или `api` (из research). Результаты фильтруются GitLab по видимости токена — это надо отразить в документации.
+- Токен: переменная окружения `GITLAB_TOKEN` (обязательна — без неё `NewClientFromEnv` возвращает `gitlab.ErrMissingToken`). Требуемый scope: `read_api` (не `api` — тот read-write, а инструмент делает только GET; `read_user` один недостаточен, он не покрывает MR/discussions/projects/groups). Источник — GitLab 18.11 `lib/api/api.rb`: `read_api` объявлен глобально для всех GET-эндпоинтов API-класса, так что он покрывает и events, хотя страница Events API в документации называет только `read_user`/`api` (неполный список, унаследованный с тех времён, когда `read_api` ещё не существовал). Результаты фильтруются GitLab по видимости токена — это надо отразить в документации.
 - Заголовок авторизации: по умолчанию `PRIVATE-TOKEN` — это то, что [документация GitLab отмечает как рекомендованный способ](https://docs.gitlab.com/api/rest/authentication/) ("Pass the token using the PRIVATE-TOKEN header (recommended) or other methods"). `Authorization: Bearer <token>` тоже документирован как валидный для personal access token и доступен через `gitlab.WithAuthHeader("Authorization")` для инстансов, которым нужен именно он.
 
 ---
@@ -349,7 +349,7 @@ items:
 - Статус реализации: резолюция username → numeric id сегодня **НЕ кешируется**, но она больше не мёртвый код. `gitlab.Client.ResolveUserID` вызывается ровно из одного места — `app.ResolveUser` (`apps/internal/app/user.go`), общей обёртки «цифры → id напрямую, иначе один вызов `ResolveUserID`» для find-mrs и get-comments. `app.ResolveUser`, в свою очередь, вызывается из трёх мест: изнутри `app.FindMRs` (`find_mrs.go`), из `clitree`'s команды `get-comments` (резолвит `--user` до вызова `app.GetComments`, поскольку `GetCommentsRequest.UserID` ожидает уже резолвленный id) и из MCP-тула `get_comments` (`bogoslav-mcp/tool_get_comments.go`) по той же причине. Ни один тип в `cache/` не хеширует username — кешировать результат резолюции по-прежнему нечем; это остаётся отдельной невыполненной задачей, как и кеширование smoke-теста (раздел 5.5, раздел 14) — появиться оно должно на стороне вызывающего слоя (`bogoslav-cli`/`bogoslav-mcp`) или как отдельная функция `cache/`. Важная асимметрия для критерия 13 (раздел 12): в `find_mrs.go` `ResolveUser` вызывается ДО `cache.Lookup`, так что даже кеш-хит с username-ом уже успел сходить в `GET /users?username=` один раз — только числовой `--user` даёт настоящий ноль HTTP-запросов на кеш-хите.
 - Резолвленный numeric ID — то, что пишется в `query.user_id` артефакта-1 и с чем сравнивается `notes[].author.id`.
 - `GET /users/:id/events` по докам принимает в путь «ID **или** Username» (колонка типа — integer, но описание параметра — «ID or Username of a user»; поведение подтверждено вживую, описание выигрывает у колонки типа).
-- Требуемый scope токена для events: `read_user` или `api` (см. §2.5).
+- Требуемый scope токена для events: `read_api` (см. §2.5) — GitLab документирует для этого конкретного эндпоинта `read_user` или `api`, но не упоминает `read_api`, потому что тот объявлен глобально, а не на этой странице.
 
 ### 5.1. Стратегия events (основная)
 
@@ -634,7 +634,7 @@ name, command, args[], env{}, transport
 
 1. **Что это и зачем** — один абзац, сценарий из раздела 1.2.
 2. **Подключение**:
-   - создание GitLab-токена: scope `read_user` или `api`; предупреждение, что результаты фильтруются по видимости токена;
+   - создание GitLab-токена: scope `read_api` (не `api` — read-write, инструмент только читает; `read_user` один недостаточен); предупреждение, что результаты фильтруются по видимости токена;
    - переменные `GITLAB_URL`, `GITLAB_TOKEN`;
    - установка: `bogoslav-skills install --all` и по инструментам; для aider — отдельный подраздел про `CONVENTIONS.md` (`--read` / `.aider.conf.yml`);
    - для Cursor — упоминание deeplink.

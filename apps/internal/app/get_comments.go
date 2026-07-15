@@ -86,7 +86,14 @@ func GetComments(ctx context.Context, client GetCommentsClient, req GetCommentsR
 	now := clockOrDefault(req.Now)
 	cacheOpts := cache.Options{Dir: dir, TTL: req.Cache.ttl(), Refresh: req.Cache.Refresh}
 
-	userID, err := ResolveUserCached(ctx, client, req.GitlabURL, req.User, cacheOpts, now())
+	// gitlabURL is the credential-free copy of req.GitlabURL used for
+	// every provenance/cache-key purpose below (see sanitizeGitlabURL's
+	// doc comment, gitlaburl.go). The real GitLab request never goes
+	// through this value: client was already built from the raw,
+	// credentialed GITLAB_URL by the caller.
+	gitlabURL := sanitizeGitlabURL(req.GitlabURL)
+
+	userID, err := ResolveUserCached(ctx, client, gitlabURL, req.User, cacheOpts, now())
 	if err != nil {
 		return GetCommentsResult{}, fmt.Errorf("get comments: %w", err)
 	}
@@ -145,7 +152,7 @@ func GetComments(ctx context.Context, client GetCommentsClient, req GetCommentsR
 		Header: artifact.Header{
 			SchemaVersion: artifact.CurrentSchemaVersion,
 			Kind:          artifact.KindCommentList,
-			Source:        artifact.Source{GitlabURL: req.GitlabURL, FetchedAt: now().UTC()},
+			Source:        artifact.Source{GitlabURL: gitlabURL, FetchedAt: now().UTC()},
 		},
 		Query: query,
 		Items: items,

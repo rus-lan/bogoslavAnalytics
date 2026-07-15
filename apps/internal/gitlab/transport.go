@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -65,6 +66,63 @@ func (c *Client) newRequest(ctx context.Context, method, path string, query url.
 	}
 	req.Header.Set(c.authHeader, c.token)
 	return req, nil
+}
+
+// maxRedirects caps how many redirects one logical request follows. It
+// mirrors net/http's own built-in default (net/http's unexported
+// defaultCheckRedirect also stops at 10): installing any custom
+// CheckRedirect replaces that default entirely, so the cap has to be
+// reimplemented here to keep the same ceiling instead of following
+// redirects forever.
+const maxRedirects = 10
+
+// checkRedirect is installed as c.httpClient.CheckRedirect by
+// NewClient. GitLab documents a 301 for a moved or renamed project
+// (a legitimate, same-host redirect this method lets through
+// unchanged), but nothing about a redirect guarantees the target is
+// still GitLab: a hostile or compromised self-hosted instance, a
+// typo'd GITLAB_URL, or a MITM injecting a 302 can point anywhere,
+// including plain http://.
+//
+// net/http itself only strips a small closed list of header names
+// (Authorization, Cookie, Proxy-Authorization, ...) on a cross-host
+// redirect; that list is fixed inside the stdlib and has never heard
+// of c.authHeader (PRIVATE-TOKEN by default). In the stdlib's own
+// words, every other header is simply "copied" -- including to a
+// different host. This method is what actually protects the token for
+// a header name the stdlib doesn't special-case.
+//
+// The rule: the auth header survives a redirect only if the target is
+// both (a) the exact same host as the very first request in the chain
+// (via[0], compared case-insensitively on host:port, not the
+// same-domain-or-subdomain relaxation net/http applies to cookies --
+// there is no legitimate reason this Client's token needs to reach a
+// second host at all) and (b) not a scheme downgrade from https to
+// http on that host (an https request redirected to http on the same
+// host would otherwise put the token on the wire in clear text, even
+// though the original request was encrypted). Comparing against
+// via[0] rather than the immediately preceding hop keeps the rule
+// simple to reason about: a chain that leaves the original host and
+// later returns to it exactly is treated the same as if that hop had
+// been reached directly.
+//
+// Any request that fails both checks has the header deleted from
+// req.Header in place before returning: req.Header is exactly what
+// net/http sends on the next hop, so this is sufficient to keep it off
+// the wire for that request, without needing CheckRedirect to abort
+// the redirect altogether.
+func (c *Client) checkRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= maxRedirects {
+		return fmt.Errorf("gitlab: stopped after %d redirects", maxRedirects)
+	}
+
+	first := via[0].URL
+	sameHost := strings.EqualFold(first.Host, req.URL.Host)
+	downgraded := first.Scheme == "https" && req.URL.Scheme != "https"
+	if !sameHost || downgraded {
+		req.Header.Del(c.authHeader)
+	}
+	return nil
 }
 
 // retryDecision reports whether a response should be retried, the

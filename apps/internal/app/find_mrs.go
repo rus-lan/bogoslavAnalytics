@@ -87,7 +87,14 @@ func FindMRs(ctx context.Context, client FindMRsClient, req FindMRsRequest) (Fin
 	now := clockOrDefault(req.Now)
 	cacheOpts := cache.Options{Dir: dir, TTL: req.Cache.ttl(), Refresh: req.Cache.Refresh}
 
-	userID, err := ResolveUserCached(ctx, client, req.GitlabURL, req.User, cacheOpts, now())
+	// gitlabURL is the credential-free copy of req.GitlabURL used for
+	// every provenance/cache-key purpose below (see sanitizeGitlabURL's
+	// doc comment, gitlaburl.go). The real GitLab request never goes
+	// through this value: client was already built from the raw,
+	// credentialed GITLAB_URL by the caller.
+	gitlabURL := sanitizeGitlabURL(req.GitlabURL)
+
+	userID, err := ResolveUserCached(ctx, client, gitlabURL, req.User, cacheOpts, now())
 	if err != nil {
 		return FindMRsResult{}, fmt.Errorf("find mrs: %w", err)
 	}
@@ -98,7 +105,7 @@ func FindMRs(ctx context.Context, client FindMRsClient, req FindMRsRequest) (Fin
 	}
 
 	query := domain.Query{
-		GitlabURL: req.GitlabURL,
+		GitlabURL: gitlabURL,
 		UserID:    userID,
 		From:      req.From,
 		To:        req.To,
@@ -142,7 +149,7 @@ func FindMRs(ctx context.Context, client FindMRsClient, req FindMRsRequest) (Fin
 		// SmokeTest (inside SelectStrategy, TZ.md section 5.3b) is served
 		// from cache when a fresh entry exists, without search/ itself
 		// changing at all (smoke_cache.go).
-		smokeClient := &cachingSmokeClient{Client: client, gitlabURL: req.GitlabURL, opts: cacheOpts, now: now}
+		smokeClient := &cachingSmokeClient{Client: client, gitlabURL: gitlabURL, opts: cacheOpts, now: now}
 		result, err = search.Find(ctx, smokeClient, params, search.Options{Strict: req.Strict, Now: now})
 		if err != nil {
 			return FindMRsResult{}, fmt.Errorf("find mrs: %w", err)
@@ -152,7 +159,7 @@ func FindMRs(ctx context.Context, client FindMRsClient, req FindMRsRequest) (Fin
 	header := artifact.Header{
 		SchemaVersion: artifact.CurrentSchemaVersion,
 		Kind:          artifact.KindMRList,
-		Source:        artifact.Source{GitlabURL: req.GitlabURL, FetchedAt: now().UTC()},
+		Source:        artifact.Source{GitlabURL: gitlabURL, FetchedAt: now().UTC()},
 	}
 	doc := toMRList(header, query, result)
 	doc.Items = filter.MRsByCount(doc.Items, req.MoreThan)

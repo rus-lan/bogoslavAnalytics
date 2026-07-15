@@ -175,6 +175,38 @@ func TestInstall_isIdempotent(t *testing.T) {
 	}
 }
 
+// TestInstall_symlinkedConfigIsReportedInOutput covers the symlink
+// finding end to end: a project that ships its .mcp.json as a symlink
+// pointing outside the project directory still gets it merged, but
+// install's own stdout names the real, out-of-tree file that was
+// actually written -- so the user is told, never surprised.
+func TestInstall_symlinkedConfigIsReportedInOutput(t *testing.T) {
+	tmp := t.TempDir()
+	outside := t.TempDir()
+
+	realPath := filepath.Join(outside, "real-mcp.json")
+	if err := os.WriteFile(realPath, []byte(`{"mcpServers":{}}`), 0o644); err != nil {
+		t.Fatalf("write real config: %v", err)
+	}
+	wantReal, err := filepath.EvalSymlinks(realPath)
+	if err != nil {
+		t.Fatalf("EvalSymlinks: %v", err)
+	}
+	if err := os.Symlink(realPath, filepath.Join(tmp, ".mcp.json")); err != nil {
+		t.Fatalf("os.Symlink: %v", err)
+	}
+
+	stdout, _, err := runInstall(t, "--target", "claude", "--project-dir", tmp, "--mcp-command", "/path/to/bogoslav-mcp")
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	if !strings.Contains(stdout, wantReal) {
+		t.Errorf("stdout does not name the symlink's real target %q:\n%s", wantReal, stdout)
+	}
+
+	assertFileContains(t, realPath, "bogoslav")
+}
+
 func TestInstall_dryRunWritesNothing(t *testing.T) {
 	tmp := t.TempDir()
 

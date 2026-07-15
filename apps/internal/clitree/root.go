@@ -44,8 +44,8 @@ when the flag is given; it has no default, and leaving it unset means the
 aggregate is only printed.
 
 Connection: set GITLAB_URL in the environment (default https://gitlab.com
-when unset) and GITLAB_TOKEN (required; scope read_user or api). Results
-are filtered by whatever the token can see.`,
+when unset) and GITLAB_TOKEN (required; scope read_api -- not api, this
+tool only reads). Results are filtered by whatever the token can see.`,
 		SilenceUsage: true,
 	}
 

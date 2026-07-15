@@ -16,7 +16,7 @@ go install github.com/rus-lan/bogoslavAnalytics/apps/cmd/bogoslav-skills@latest
 
 ```
 export GITLAB_URL=https://gitlab.вашсервер
-export GITLAB_TOKEN=<токен, scope read_user или api>
+export GITLAB_TOKEN=<токен, scope read_api — НЕ api, у этого инструмента только чтение>
 ```
 
 ## 3. Поиск

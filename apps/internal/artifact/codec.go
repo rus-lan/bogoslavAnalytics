@@ -98,15 +98,49 @@ func encode(v any, format Format) ([]byte, error) {
 	}
 }
 
+// artifactFileMode is the permission mode artifact files are written
+// with: owner read/write only. Artifacts carry review comment bodies
+// together with commenters' real names, usernames and numeric ids
+// (TZ.md section 4), so a shared host must not be able to read them
+// through group or other bits.
+const artifactFileMode = 0o600
+
+// artifactDirMode is the permission mode a newly created artifact
+// directory is given: owner access only. The files inside are already
+// unreadable to another local user at artifactFileMode, but a wider
+// directory mode would still let that user list the artifact
+// filenames (each is "<kind>_<hash>.<ext>", so the listing itself
+// carries no personal data, but there is no reason to allow even
+// that).
+const artifactDirMode = 0o700
+
 // writeFile writes data to path, creating any missing parent
 // directories.
+//
+// os.WriteFile's mode argument only applies to a file it creates; an
+// existing file keeps whatever mode it already has. So that an
+// artifact written before this package tightened its default (or
+// otherwise sitting at a looser mode) is not left there forever,
+// every write ends with an explicit chmod to artifactFileMode rather
+// than only setting it on first creation.
+//
+// The parent directory gets the same "at creation only" treatment,
+// deliberately not extended with a matching chmod: os.MkdirAll is a
+// no-op on a directory that already exists, so a pre-existing
+// directory keeps its current mode. Unlike file contents, that is not
+// a data leak (see artifactDirMode), so retroactively tightening it
+// is not worth the risk of overriding a mode set for some other
+// reason.
 func writeFile(path string, data []byte) error {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, artifactDirMode); err != nil {
 		return fmt.Errorf("write file: create directory %q: %w", dir, err)
 	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := os.WriteFile(path, data, artifactFileMode); err != nil {
 		return fmt.Errorf("write file %q: %w", path, err)
+	}
+	if err := os.Chmod(path, artifactFileMode); err != nil {
+		return fmt.Errorf("write file %q: set permissions: %w", path, err)
 	}
 	return nil
 }
