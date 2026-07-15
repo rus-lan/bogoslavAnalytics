@@ -15,11 +15,14 @@ import (
 // get_comments tool / comments command surface (TZ.md section 7.2).
 // Exactly one of FromArtifact and MRs must be set.
 //
-// UserID is already resolved: GetComments never calls
-// gitlab.ResolveUserID itself. Username resolution (TZ.md section 5.0)
-// is FindMRs's job; a caller that only has a raw --user string calls
-// ResolveUser once before building this request, so one pipeline run
-// never resolves the same username twice.
+// User is a numeric id or a username (TZ.md section 5.0); GetComments
+// resolves it exactly once via ResolveUserCached -- the same
+// {gitlab_url, user} on-disk cache FindMRs uses (user.go), so a username
+// costs one GET /users?username= call and then comes from that cache
+// until the TTL expires or --refresh forces a miss, and a numeric User
+// costs zero calls, always. See ResolveUserCached's doc comment for the
+// rename hazard this cache carries: it now applies here too, not only to
+// find_mrs.
 //
 // GetComments is cached exactly like FindMRs (TZ.md section 4: "every
 // artifact IS a cache"): the query -- user, dates, and the resolved
@@ -29,9 +32,11 @@ import (
 // most call-expensive step in the whole pipeline.
 type GetCommentsRequest struct {
 	GitlabURL string
-	UserID    int64
-	From      domain.Date
-	To        domain.Date
+	// User is a numeric id or a username (TZ.md section 5.0); GetComments
+	// resolves it exactly once via ResolveUserCached.
+	User string
+	From domain.Date
+	To   domain.Date
 
 	// FromArtifact is the path to an mr_list artifact whose Items become
 	// the merge request set; mutually exclusive with MRs.
@@ -59,18 +64,29 @@ type GetCommentsResult struct {
 }
 
 // GetComments is the shared implementation behind the get_comments MCP
-// tool and the comments CLI command (TZ.md section 7.2): resolve the
-// merge request set (from an mr_list artifact or an explicit list),
-// serve a fresh cached artifact-2 if one already exists, or fetch every
-// discussion via gitlab.Discussions, keep only req.UserID's own
-// non-system notes inside [From, To] (the same exact-match rule TZ.md
-// section 5.4 pins for comment counting), and write a new artifact-2.
+// tool and the comments CLI command (TZ.md section 7.2): resolve --user
+// (cached, see ResolveUserCached) and the merge request set (from an
+// mr_list artifact or an explicit list), serve a fresh cached artifact-2
+// if one already exists, or fetch every discussion via
+// gitlab.Discussions, keep only the resolved user's own non-system notes
+// inside [From, To] (the same exact-match rule TZ.md section 5.4 pins
+// for comment counting), and write a new artifact-2.
 //
 // Resolving the merge request set (reading FromArtifact, if set) is a
-// local file read, not a GitLab call, so it always happens before the
-// cache check: the resolved set is part of what gets hashed.
-func GetComments(ctx context.Context, client DiscussionsClient, req GetCommentsRequest) (GetCommentsResult, error) {
+// local file read, not a GitLab call, so it always happens first, before
+// --user is resolved or any cache is consulted.
+func GetComments(ctx context.Context, client GetCommentsClient, req GetCommentsRequest) (GetCommentsResult, error) {
 	refs, err := resolveMRRefs(req.FromArtifact, req.MRs)
+	if err != nil {
+		return GetCommentsResult{}, fmt.Errorf("get comments: %w", err)
+	}
+
+	dir := outDir(req.Dir)
+	format := outFormat(req.Format)
+	now := clockOrDefault(req.Now)
+	cacheOpts := cache.Options{Dir: dir, TTL: req.Cache.ttl(), Refresh: req.Cache.Refresh}
+
+	userID, err := ResolveUserCached(ctx, client, req.GitlabURL, req.User, cacheOpts, now())
 	if err != nil {
 		return GetCommentsResult{}, fmt.Errorf("get comments: %w", err)
 	}
@@ -81,7 +97,7 @@ func GetComments(ctx context.Context, client DiscussionsClient, req GetCommentsR
 	}
 
 	query := artifact.CommentQuery{
-		UserID:       req.UserID,
+		UserID:       userID,
 		From:         req.From,
 		To:           req.To,
 		MRs:          refs,
@@ -93,13 +109,9 @@ func GetComments(ctx context.Context, client DiscussionsClient, req GetCommentsR
 		return GetCommentsResult{}, fmt.Errorf("get comments: %w", err)
 	}
 
-	dir := outDir(req.Dir)
-	format := outFormat(req.Format)
-	now := clockOrDefault(req.Now)
-
 	path, hit, err := cache.Lookup(
 		string(artifact.KindCommentList), hash,
-		cache.Options{Dir: dir, TTL: req.Cache.ttl(), Refresh: req.Cache.Refresh},
+		cacheOpts,
 		&artifact.HeaderStore{}, now(),
 	)
 	if err != nil {
@@ -119,7 +131,7 @@ func GetComments(ctx context.Context, client DiscussionsClient, req GetCommentsR
 		if err != nil {
 			return GetCommentsResult{}, fmt.Errorf("get comments: %w", err)
 		}
-		for _, note := range extractUserNotes(discussions, req.UserID, dateRange) {
+		for _, note := range extractUserNotes(discussions, userID, dateRange) {
 			items = append(items, artifact.CommentItem{MRIID: ref.MRIID, Note: note})
 		}
 	}

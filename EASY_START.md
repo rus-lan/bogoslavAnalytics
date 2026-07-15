@@ -84,7 +84,7 @@ bogoslav-skills install --target opencode   # или claude | kilo | cline | cur
 |---|---|
 | `--more-than 10` | СТРОГО больше: у MR ровно с 10 комментариями результат не попадёт в выдачу |
 | `--project` | путь или число в `find-mrs`, но ТОЛЬКО число в `get-comments` — один и тот же флаг, разные типы |
-| `--user ivanov` | резолв имени — 1 доп. вызов API; в `find-mrs` результат кешируется на 24ч (`--refresh` сбрасывает), в `get-comments` резолвится заново при каждом запуске. `--user 42` — 0 доп. вызовов |
+| `--user ivanov` | резолв имени — 1 доп. вызов API; результат кешируется на 24ч и в `find-mrs`, и в `get-comments` (`--refresh` сбрасывает). `--user 42` — 0 доп. вызовов |
 | `--format text` / `html` | только на запись: не читаются обратно, не годятся для `--from-artifact`, никогда не дают cache hit |
 | `get-stats`, `get-classify-batch` | поддерживают только `json`/`yaml` |
 | Повторный запуск | отдаётся из кеша; `--refresh` заставляет идти в GitLab |

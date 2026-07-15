@@ -11,12 +11,11 @@ import (
 	"github.com/rus-lan/bogoslavAnalytics/apps/internal/mcptool"
 )
 
-// newGetCommentsRequest converts in and an already-resolved userID into
-// an app.GetCommentsRequest. It makes no GitLab call itself: userID
-// resolution (TZ.md section 5.0) is getComments's job, so this mapping
-// stays pure and testable on its own, mirroring bogoslav-cli's
-// newGetCommentsRequest.
-func newGetCommentsRequest(in mcptool.GetCommentsInput, gitlabURL string, userID int64) (app.GetCommentsRequest, error) {
+// newGetCommentsRequest converts in into an app.GetCommentsRequest. It
+// makes no GitLab call and does not resolve user: app.GetComments does
+// both itself (TZ.md section 5.0), so this mapping stays pure and
+// testable on its own, mirroring bogoslav-cli's newGetCommentsRequest.
+func newGetCommentsRequest(in mcptool.GetCommentsInput, gitlabURL string) (app.GetCommentsRequest, error) {
 	from, err := domain.ParseDate(in.From)
 	if err != nil {
 		return app.GetCommentsRequest{}, fmt.Errorf("from: %w", err)
@@ -32,7 +31,7 @@ func newGetCommentsRequest(in mcptool.GetCommentsInput, gitlabURL string, userID
 
 	return app.GetCommentsRequest{
 		GitlabURL:    gitlabURL,
-		UserID:       userID,
+		User:         in.User,
 		From:         from,
 		To:           to,
 		FromArtifact: in.FromArtifact,
@@ -43,16 +42,12 @@ func newGetCommentsRequest(in mcptool.GetCommentsInput, gitlabURL string, userID
 	}, nil
 }
 
-// getComments is the get_comments tool handler: resolve user, build the
-// request, and call app.GetComments (TZ.md section 7.3: one function of
-// apps/internal/app per tool).
+// getComments is the get_comments tool handler: build the request and
+// call app.GetComments (TZ.md section 7.3: one function of
+// apps/internal/app per tool). User resolution (TZ.md section 5.0) is
+// app.GetComments's own job, not this handler's.
 func (s *toolServer) getComments(ctx context.Context, _ *mcp.CallToolRequest, in mcptool.GetCommentsInput) (*mcp.CallToolResult, mcptool.GetCommentsOutput, error) {
-	userID, err := app.ResolveUser(ctx, s.client, in.User)
-	if err != nil {
-		return nil, mcptool.GetCommentsOutput{}, fmt.Errorf("get_comments: %w", err)
-	}
-
-	req, err := newGetCommentsRequest(in, s.gitlabURL, userID)
+	req, err := newGetCommentsRequest(in, s.gitlabURL)
 	if err != nil {
 		return nil, mcptool.GetCommentsOutput{}, err
 	}

@@ -100,11 +100,11 @@ func buildMRRefs(cmd *cobra.Command, project int64, mrs []int64) ([]artifact.MRR
 	return refs, nil
 }
 
-// newGetCommentsRequest converts flags and an already-resolved userID
-// into an app.GetCommentsRequest. It makes no GitLab call itself: userID
-// resolution (TZ.md section 5.0) is runGetComments's job, so this mapping
-// stays pure and testable on its own.
-func newGetCommentsRequest(cmd *cobra.Command, flags getCommentsFlags, gitlabURL string, userID int64) (app.GetCommentsRequest, error) {
+// newGetCommentsRequest converts flags into an app.GetCommentsRequest. It
+// makes no GitLab call and does not resolve --user: app.GetComments does
+// both itself (TZ.md section 5.0), so this mapping stays pure and
+// testable on its own, mirroring bogoslav-cli's newFindMRsRequest.
+func newGetCommentsRequest(cmd *cobra.Command, flags getCommentsFlags, gitlabURL string) (app.GetCommentsRequest, error) {
 	from, err := domain.ParseDate(flags.from)
 	if err != nil {
 		return app.GetCommentsRequest{}, fmt.Errorf("--from: %w", err)
@@ -124,7 +124,7 @@ func newGetCommentsRequest(cmd *cobra.Command, flags getCommentsFlags, gitlabURL
 
 	return app.GetCommentsRequest{
 		GitlabURL:    gitlabURL,
-		UserID:       userID,
+		User:         flags.user,
 		From:         from,
 		To:           to,
 		FromArtifact: flags.fromArtifact,
@@ -135,21 +135,17 @@ func newGetCommentsRequest(cmd *cobra.Command, flags getCommentsFlags, gitlabURL
 	}, nil
 }
 
-// runGetComments resolves --user, builds the request, calls
-// app.GetComments (TZ.md section 7.2: one function of the internal
-// package per command), and renders the result.
+// runGetComments builds the request, calls app.GetComments (TZ.md
+// section 7.2: one function of the internal package per command), and
+// renders the result. --user resolution (TZ.md section 5.0) is
+// app.GetComments's own job, not runGetComments's.
 func runGetComments(cmd *cobra.Command, flags getCommentsFlags) error {
 	client, err := newGitlabClient()
 	if err != nil {
 		return err
 	}
 
-	userID, err := app.ResolveUser(cmd.Context(), client, flags.user)
-	if err != nil {
-		return fmt.Errorf("get-comments: %w", err)
-	}
-
-	req, err := newGetCommentsRequest(cmd, flags, resolvedGitlabURL(), userID)
+	req, err := newGetCommentsRequest(cmd, flags, resolvedGitlabURL())
 	if err != nil {
 		return err
 	}

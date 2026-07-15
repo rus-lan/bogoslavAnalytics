@@ -21,7 +21,7 @@ func TestNewGetCommentsRequest_mapsFlagsToRequest(t *testing.T) {
 			args: []string{"--user", "alice", "--from", "2026-01-01", "--to", "2026-06-30", "--from-artifact", "artifacts/mr_list_x.yaml"},
 			want: app.GetCommentsRequest{
 				GitlabURL:    "https://gitlab.example.com",
-				UserID:       42,
+				User:         "alice",
 				From:         domain.NewDate(2026, time.January, 1),
 				To:           domain.NewDate(2026, time.June, 30),
 				FromArtifact: "artifacts/mr_list_x.yaml",
@@ -33,7 +33,7 @@ func TestNewGetCommentsRequest_mapsFlagsToRequest(t *testing.T) {
 			args: []string{"--user", "alice", "--from", "2026-01-01", "--to", "2026-06-30", "--project", "123", "--mr", "7", "--mr", "9"},
 			want: app.GetCommentsRequest{
 				GitlabURL: "https://gitlab.example.com",
-				UserID:    42,
+				User:      "alice",
 				From:      domain.NewDate(2026, time.January, 1),
 				To:        domain.NewDate(2026, time.June, 30),
 				MRs: []artifact.MRRef{
@@ -48,7 +48,7 @@ func TestNewGetCommentsRequest_mapsFlagsToRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cmd, flags := buildFlags(t, registerGetCommentsFlags, tt.args)
-			got, err := newGetCommentsRequest(cmd, *flags, "https://gitlab.example.com", 42)
+			got, err := newGetCommentsRequest(cmd, *flags, "https://gitlab.example.com")
 			if err != nil {
 				t.Fatalf("newGetCommentsRequest() error = %v", err)
 			}
@@ -86,7 +86,7 @@ func TestNewGetCommentsRequest_rejectsUnknownFormat(t *testing.T) {
 	cmd, flags := buildFlags(t, registerGetCommentsFlags, []string{
 		"--user", "42", "--from", "2026-01-01", "--to", "2026-06-30", "--format", "xml",
 	})
-	_, err := newGetCommentsRequest(cmd, *flags, "https://gitlab.example.com", 42)
+	_, err := newGetCommentsRequest(cmd, *flags, "https://gitlab.example.com")
 	if err == nil {
 		t.Fatal("newGetCommentsRequest() error = nil, want an error for --format xml")
 	}

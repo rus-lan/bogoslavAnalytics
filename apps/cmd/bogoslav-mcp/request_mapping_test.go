@@ -114,7 +114,7 @@ func TestNewGetCommentsRequest_mapsEveryField(t *testing.T) {
 		CacheTTLSeconds: 0,
 	}
 
-	req, err := newGetCommentsRequest(in, "https://gitlab.example.com", 42)
+	req, err := newGetCommentsRequest(in, "https://gitlab.example.com")
 	if err != nil {
 		t.Fatalf("newGetCommentsRequest() error = %v", err)
 	}
@@ -122,8 +122,8 @@ func TestNewGetCommentsRequest_mapsEveryField(t *testing.T) {
 	if req.GitlabURL != "https://gitlab.example.com" {
 		t.Errorf("GitlabURL = %q, want %q", req.GitlabURL, "https://gitlab.example.com")
 	}
-	if req.UserID != 42 {
-		t.Errorf("UserID = %d, want 42", req.UserID)
+	if req.User != "alice" {
+		t.Errorf("User = %q, want %q", req.User, "alice")
 	}
 	if req.FromArtifact != "artifacts/mr_list_abc.yaml" {
 		t.Errorf("FromArtifact = %q, want %q", req.FromArtifact, "artifacts/mr_list_abc.yaml")
@@ -145,7 +145,7 @@ func TestNewGetCommentsRequest_mapsExplicitMRs(t *testing.T) {
 		MRs: []artifact.MRRef{{ProjectID: 123, MRIID: 77}},
 	}
 
-	req, err := newGetCommentsRequest(in, "https://gitlab.example.com", 1)
+	req, err := newGetCommentsRequest(in, "https://gitlab.example.com")
 	if err != nil {
 		t.Fatalf("newGetCommentsRequest() error = %v", err)
 	}

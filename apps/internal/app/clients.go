@@ -22,17 +22,26 @@ type FindMRsClient interface {
 	UserResolver
 }
 
-// DiscussionsClient is everything GetComments needs from GitLab: just
-// the exact-count source both search strategies already share (TZ.md
-// section 5.4).
+// DiscussionsClient is the exact-count source both search strategies
+// already share (TZ.md section 5.4).
 type DiscussionsClient interface {
 	Discussions(ctx context.Context, project gitlab.ID, mrIID int64) ([]domain.Discussion, error)
 }
 
-// The following compile-time checks prove *gitlab.Client satisfies both
-// interfaces app defines for itself, without any app function signature
+// GetCommentsClient is everything GetComments needs from GitLab:
+// DiscussionsClient, plus username resolution -- the same
+// FindMRsClient-shaped composition (search.Client + UserResolver) applied
+// to GetComments's own narrower surface.
+type GetCommentsClient interface {
+	DiscussionsClient
+	UserResolver
+}
+
+// The following compile-time checks prove *gitlab.Client satisfies every
+// interface app defines for itself, without any app function signature
 // ever naming the concrete type (TZ.md section 2.4).
 var (
 	_ FindMRsClient     = (*gitlab.Client)(nil)
 	_ DiscussionsClient = (*gitlab.Client)(nil)
+	_ GetCommentsClient = (*gitlab.Client)(nil)
 )

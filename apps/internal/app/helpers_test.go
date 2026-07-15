@@ -102,11 +102,13 @@ func (f *fakeClient) ResolveUserID(ctx context.Context, username string) (int64,
 
 var _ FindMRsClient = (*fakeClient)(nil)
 
-// fakeDiscussionsClient implements DiscussionsClient in-memory for
+// fakeDiscussionsClient implements GetCommentsClient in-memory for
 // GetComments tests.
 type fakeDiscussionsClient struct {
-	discussionsFn func(ctx context.Context, project gitlab.ID, mrIID int64) ([]domain.Discussion, error)
-	calls         int
+	discussionsFn      func(ctx context.Context, project gitlab.ID, mrIID int64) ([]domain.Discussion, error)
+	calls              int
+	resolveUserIDFn    func(ctx context.Context, username string) (int64, error)
+	resolveUserIDCalls int
 }
 
 func (f *fakeDiscussionsClient) Discussions(ctx context.Context, project gitlab.ID, mrIID int64) ([]domain.Discussion, error) {
@@ -117,7 +119,15 @@ func (f *fakeDiscussionsClient) Discussions(ctx context.Context, project gitlab.
 	return f.discussionsFn(ctx, project, mrIID)
 }
 
-var _ DiscussionsClient = (*fakeDiscussionsClient)(nil)
+func (f *fakeDiscussionsClient) ResolveUserID(ctx context.Context, username string) (int64, error) {
+	f.resolveUserIDCalls++
+	if f.resolveUserIDFn == nil {
+		panic("fakeDiscussionsClient: ResolveUserID called but not configured")
+	}
+	return f.resolveUserIDFn(ctx, username)
+}
+
+var _ GetCommentsClient = (*fakeDiscussionsClient)(nil)
 
 // note builds a domain.Note with the fields this package's tests care
 // about, mirroring the search package's own test helper of the same
