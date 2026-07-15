@@ -2,14 +2,42 @@
 
 ## 1. Установка
 
+Рекомендуемый способ — без Go-тулчейна вообще (инструмент рассчитан на unattended-запуск в CI/CD):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rus-lan/bogoslavAnalytics/v0.2.0/install.sh | sh
 ```
+
+Вывод:
+```
+installing bogoslav (tag v0.2.0) for linux/amd64
+
+installed: bogoslav-cli bogoslav-mcp bogoslav-skills
+into: /home/<user>/.local/bin
+note: ... is not on your PATH; add it, e.g.: export PATH="...:$PATH"
+```
+
+Ставит три бинарника в `~/.local/bin` (переопределяется `BOGOSLAV_INSTALL_DIR`) — эта директория должна быть в `PATH`, инсталлятор сам напомнит, если её там нет. linux/darwin, amd64/arm64 (детект через `uname`) — Windows не поддерживается. Linux-сборки статические — работают и в `alpine`/`scratch`-образах CI.
+
+Перед установкой скрипт сверяет SHA-256 каждого бинарника с `SHA256SUMS` того же релиза и отказывается ставить при несовпадении или отсутствии `sha256sum`/`shasum` (обходится через `BOGOSLAV_ALLOW_NO_CHECKSUM=1`). Честно: это проверяет сами бинарники, а не скрипт — прочитать его перед запуском можно так: `curl -fsSL <url> | less`.
+
+Для CI — версию фиксировать, а не тянуть `latest`: так сборка остаётся воспроизводимой, новый релиз не может незаметно поменять то, что реально запускается.
+
+```bash
+BOGOSLAV_VERSION=v0.2.0 sh -c "$(curl -fsSL https://raw.githubusercontent.com/rus-lan/bogoslavAnalytics/v0.2.0/install.sh)"
+```
+
+Переменные окружения: `BOGOSLAV_VERSION` (версия), `BOGOSLAV_INSTALL_DIR` (куда ставить, по умолчанию `$HOME/.local/bin`), `BOGOSLAV_BINS` (поставить не все три бинарника, а подмножество), `BOGOSLAV_ALLOW_NO_CHECKSUM` (ставить без проверки контрольных сумм).
+
+Альтернатива — если Go уже стоит (нужен не ниже 1.25.0, требование зависимости `modelcontextprotocol/go-sdk`):
+
+```bash
 go install github.com/rus-lan/bogoslavAnalytics/cmd/bogoslav-cli@latest
 go install github.com/rus-lan/bogoslavAnalytics/cmd/bogoslav-mcp@latest
 go install github.com/rus-lan/bogoslavAnalytics/cmd/bogoslav-skills@latest
 ```
 
 Бинарники попадут в `$GOBIN` (или `~/go/bin`) — эта директория должна быть в `PATH`.
-Нужен Go не ниже 1.25.0 (требование зависимости `modelcontextprotocol/go-sdk`).
 Путь модуля регистрозависимый — скопируйте, не набирайте вручную.
 
 ## 2. Настройка
