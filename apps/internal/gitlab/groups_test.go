@@ -18,7 +18,7 @@ func TestClient_GroupProjects_includesSubgroups(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClient(srv.URL, "token")
-	projects, err := c.GroupProjects(t.Context(), 9)
+	projects, err := c.GroupProjects(t.Context(), NumericID(9))
 	if err != nil {
 		t.Fatalf("GroupProjects() error = %v", err)
 	}

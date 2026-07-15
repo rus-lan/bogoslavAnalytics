@@ -61,7 +61,7 @@ func (c *Client) SmokeTest(ctx context.Context, userID int64) (domain.SmokeResul
 
 	foundThreadReply := false
 	for _, cand := range candidates {
-		discussions, err := c.Discussions(ctx, cand.projectID, cand.mrIID)
+		discussions, err := c.Discussions(ctx, NumericID(cand.projectID), cand.mrIID)
 		if err != nil && !errors.Is(err, ErrPageLimitReached) {
 			return domain.SmokeUnknown, fmt.Errorf("gitlab: smoke test discussions: %w", err)
 		}

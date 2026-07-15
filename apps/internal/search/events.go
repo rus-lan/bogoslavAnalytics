@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
 	"github.com/rus-lan/bogoslav-analytics/apps/internal/gitlab"
@@ -45,18 +46,48 @@ func fetchEvents(ctx context.Context, client Client, userID int64, r domain.Date
 	return append(leftEvents, rightEvents...), nil
 }
 
+// scopeProjectNumericID returns the numeric project id p represents, when p
+// was built as a numeric gitlab.ID (gitlab.NumericID). ok is false when p is
+// a namespaced path: gitlab.ID.String() documents returning "the plain
+// (unescaped) path" for a path id, and a valid GitLab project path always
+// carries at least one non-digit character (the namespace separator),
+// which strconv.ParseInt correctly rejects.
+func scopeProjectNumericID(p gitlab.ID) (int64, bool) {
+	n, err := strconv.ParseInt(p.String(), 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
 // scopeProjectSet resolves p.Scope into the set of project ids the events
 // strategy must keep. It returns nil for "no restriction" (every project
 // visible to the token), matching TZ.md section 5.1.6's client-side group
 // filter ("события чужих проектов отбрасываются на клиенте").
+//
+// A group scope never needs a resolution step: client.GroupProjects always
+// returns numeric project ids (TZ.md section 5.1.6), whether the group
+// itself was given as a numeric id or a namespaced path. A project scope
+// does need one when it was built from a namespaced path, since comment
+// events' project_id field (TZ.md section 5.1.2) is always numeric: that
+// one lookup goes through client.GetProject, exactly once per call here
+// (never once per candidate event).
 func scopeProjectSet(ctx context.Context, client Client, s Scope) (map[int64]bool, error) {
 	switch {
 	case s.ProjectID != nil:
-		return map[int64]bool{*s.ProjectID: true}, nil
+		id, ok := scopeProjectNumericID(*s.ProjectID)
+		if !ok {
+			project, err := client.GetProject(ctx, *s.ProjectID)
+			if err != nil {
+				return nil, fmt.Errorf("search: scope project %s: %w", s.ProjectID.String(), err)
+			}
+			id = project.ID
+		}
+		return map[int64]bool{id: true}, nil
 	case s.GroupID != nil:
 		projects, err := client.GroupProjects(ctx, *s.GroupID)
 		if err != nil {
-			return nil, fmt.Errorf("search: scope group %d projects: %w", *s.GroupID, err)
+			return nil, fmt.Errorf("search: scope group %s projects: %w", s.GroupID.String(), err)
 		}
 		set := make(map[int64]bool, len(projects))
 		for _, pr := range projects {

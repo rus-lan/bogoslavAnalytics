@@ -16,10 +16,17 @@ import (
 // bruteforce user_notes_count check) use ">=" as a deliberate superset;
 // this final filter is the only place ">" is enforced.
 //
-// Find does not resolve --user or a --group/--project path to a numeric
-// id, and it does not implement the point mode of TZ.md section 7.2
-// (project+mr with no candidate search): both are the caller's job, ahead
-// of building Params.
+// When the events strategy is used, the survivors of that filter are then
+// enriched via enrichEventsCandidates so events and bruteforce return the
+// same domain.MergeRequest shape for the same merge request (TZ.md section
+// 14, item 11). Enrichment runs only on survivors, after the filter, never
+// on the full candidate set: that is what keeps the events strategy cheap.
+//
+// Find does not resolve --user to a numeric id, and it does not implement
+// the point mode of TZ.md section 7.2 (project+mr with no candidate
+// search): both are the caller's job, ahead of building Params. A
+// --group/--project path, however, needs no resolution step here: it goes
+// straight into Params.Scope's gitlab.ID (TZ.md section 14, item 1).
 func Find(ctx context.Context, client Client, p Params, opts Options) (Result, error) {
 	strategy, smoke, err := SelectStrategy(ctx, client, p, opts)
 	if err != nil {
@@ -42,6 +49,13 @@ func Find(ctx context.Context, client Client, p Params, opts Options) (Result, e
 	items, err := resolveCandidates(ctx, client, candidates, p)
 	if err != nil {
 		return Result{}, fmt.Errorf("search: find: %w", err)
+	}
+
+	if strategy == domain.StrategyEvents {
+		items, err = enrichEventsCandidates(ctx, client, items)
+		if err != nil {
+			return Result{}, fmt.Errorf("search: find: %w", err)
+		}
 	}
 
 	return Result{Strategy: strategy, Smoke: smoke, Items: items}, nil

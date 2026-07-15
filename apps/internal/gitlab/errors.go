@@ -27,4 +27,9 @@ var (
 	// sub-windows rather than paging deeper. This package only detects
 	// and reports the limit; splitting the window is done by the caller.
 	ErrPageLimitReached = errors.New("gitlab: page limit reached, split the request into date sub-windows")
+
+	// ErrProjectNotFound is returned by GetProject when GET /projects/:id
+	// answers 404, so a missing project surfaces as a clear sentinel
+	// instead of a zero-value domain.Project with a nil error.
+	ErrProjectNotFound = errors.New("gitlab: project not found")
 )

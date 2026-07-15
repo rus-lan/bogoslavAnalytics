@@ -14,6 +14,17 @@ import (
 // each response -- never pinned to a hardcoded rate constant (gitlab.com's
 // 2000/min, self-managed's 7200/3600s) and never pinned to a specific
 // endpoint path.
+//
+// 18.11 fact, worth pinning down so this never gets "fixed" into a
+// path-based limiter later: on self-managed GitLab 18.11 the authenticated
+// API throttle is OFF by default, and the 18-11-stable-ee source builds
+// the RateLimit-* headers from Rack::Attack match data -- when no throttle
+// rule matches a request, those headers are simply not emitted at all,
+// not emitted as zero. observe already treats a response with no headers
+// (or headers that fail to parse) as "no information", clearing prior
+// state and falling back to backoffDelay -- exactly the response-driven
+// behavior this fact requires. Do not change this logic on the strength of
+// that fact alone.
 type limiter struct {
 	mu         sync.Mutex
 	hasHeaders bool

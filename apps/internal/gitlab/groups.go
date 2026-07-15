@@ -24,9 +24,9 @@ type groupProjectWire struct {
 
 // GroupProjects lists every project in a group, including subgroups, via
 // GET /groups/:id/projects?include_subgroups=true (TZ.md sections 5.1.6
-// and 5.2.1).
-func (c *Client) GroupProjects(ctx context.Context, groupID int64) ([]domain.Project, error) {
-	path := fmt.Sprintf("/groups/%d/projects", groupID)
+// and 5.2.1). group may be a numeric id or a namespaced path (ID).
+func (c *Client) GroupProjects(ctx context.Context, group ID) ([]domain.Project, error) {
+	path := fmt.Sprintf("/groups/%s/projects", group.segment())
 
 	items, err := paginate(ctx, func(ctx context.Context, page int) ([]groupProjectWire, error) {
 		q := url.Values{}
@@ -50,7 +50,7 @@ func (c *Client) GroupProjects(ctx context.Context, groupID int64) ([]domain.Pro
 		return pageItems, nil
 	})
 	if err != nil && !errors.Is(err, ErrPageLimitReached) {
-		return nil, fmt.Errorf("gitlab: projects for group %d: %w", groupID, err)
+		return nil, fmt.Errorf("gitlab: projects for group %s: %w", group, err)
 	}
 
 	projects := make([]domain.Project, len(items))

@@ -91,7 +91,7 @@ func TestEventsCandidates_preliminaryCountIsSupersetAtGreaterOrEqualThreshold(t 
 }
 
 func TestScopeProjectSet_restrictsToSingleProject(t *testing.T) {
-	projectID := int64(99)
+	projectID := gitlab.NumericID(99)
 	set, err := scopeProjectSet(context.Background(), &fakeClient{}, Scope{ProjectID: &projectID})
 	if err != nil {
 		t.Fatalf("scopeProjectSet() error = %v", err)
@@ -101,12 +101,52 @@ func TestScopeProjectSet_restrictsToSingleProject(t *testing.T) {
 	}
 }
 
-func TestScopeProjectSet_restrictsToGroupProjects(t *testing.T) {
-	groupID := int64(7)
+func TestScopeProjectSet_pathProjectScopeResolvesViaGetProject(t *testing.T) {
+	// A namespaced path has no numeric project id to compare against
+	// comment events' always-numeric project_id field (TZ.md section 5.1.2):
+	// scopeProjectSet resolves it via client.GetProject instead of failing.
+	projectID := gitlab.PathID("my-group/my-project")
 	client := &fakeClient{
-		groupProjectsFn: func(ctx context.Context, gotGroupID int64) ([]domain.Project, error) {
+		getProjectFn: func(ctx context.Context, gotProjectID gitlab.ID) (domain.Project, error) {
+			if gotProjectID != projectID {
+				t.Errorf("GetProject() called with project %s, want %s", gotProjectID, projectID)
+			}
+			return domain.Project{ID: 99, Path: "my-group/my-project"}, nil
+		},
+	}
+	set, err := scopeProjectSet(context.Background(), client, Scope{ProjectID: &projectID})
+	if err != nil {
+		t.Fatalf("scopeProjectSet() error = %v", err)
+	}
+	if len(set) != 1 || !set[99] {
+		t.Errorf("scopeProjectSet() = %v, want {99: true}", set)
+	}
+	if client.getProjectCalls != 1 {
+		t.Errorf("GetProject() called %d times, want exactly 1", client.getProjectCalls)
+	}
+}
+
+func TestScopeProjectSet_numericProjectScopeMakesNoGetProjectCall(t *testing.T) {
+	projectID := gitlab.NumericID(99)
+	client := &fakeClient{}
+	set, err := scopeProjectSet(context.Background(), client, Scope{ProjectID: &projectID})
+	if err != nil {
+		t.Fatalf("scopeProjectSet() error = %v", err)
+	}
+	if len(set) != 1 || !set[99] {
+		t.Errorf("scopeProjectSet() = %v, want {99: true}", set)
+	}
+	if client.getProjectCalls != 0 {
+		t.Errorf("GetProject() called %d times, want 0 (numeric scope needs no lookup)", client.getProjectCalls)
+	}
+}
+
+func TestScopeProjectSet_restrictsToGroupProjects(t *testing.T) {
+	groupID := gitlab.NumericID(7)
+	client := &fakeClient{
+		groupProjectsFn: func(ctx context.Context, gotGroupID gitlab.ID) ([]domain.Project, error) {
 			if gotGroupID != groupID {
-				t.Errorf("GroupProjects() called with group %d, want %d", gotGroupID, groupID)
+				t.Errorf("GroupProjects() called with group %s, want %s", gotGroupID, groupID)
 			}
 			return []domain.Project{{ID: 1}, {ID: 2}}, nil
 		},
@@ -117,6 +157,33 @@ func TestScopeProjectSet_restrictsToGroupProjects(t *testing.T) {
 	}
 	if len(set) != 2 || !set[1] || !set[2] {
 		t.Errorf("scopeProjectSet() = %v, want {1: true, 2: true}", set)
+	}
+}
+
+func TestScopeProjectSet_groupPathScopeNeedsNoResolution(t *testing.T) {
+	// A namespaced group path goes straight into GroupProjects's :id
+	// parameter (TZ.md section 14, item 1, now resolved): the numeric
+	// project ids scopeProjectSet builds always come back from the API
+	// response itself, so a group scope never needs the kind of
+	// client-side numeric lookup a single project scope does.
+	groupID := gitlab.PathID("my-group/subgroup")
+	client := &fakeClient{
+		groupProjectsFn: func(ctx context.Context, gotGroupID gitlab.ID) ([]domain.Project, error) {
+			if gotGroupID != groupID {
+				t.Errorf("GroupProjects() called with group %s, want %s", gotGroupID, groupID)
+			}
+			return []domain.Project{{ID: 5, Path: "my-group/subgroup/repo"}}, nil
+		},
+	}
+	set, err := scopeProjectSet(context.Background(), client, Scope{GroupID: &groupID})
+	if err != nil {
+		t.Fatalf("scopeProjectSet() error = %v", err)
+	}
+	if len(set) != 1 || !set[5] {
+		t.Errorf("scopeProjectSet() = %v, want {5: true}", set)
+	}
+	if client.getProjectCalls != 0 {
+		t.Errorf("GetProject() called %d times, want 0 (a group scope resolves via GroupProjects, never GetProject)", client.getProjectCalls)
 	}
 }
 
@@ -137,7 +204,7 @@ func TestEventsCandidates_groupScopeDropsEventsFromOtherProjects(t *testing.T) {
 		commentEvent(9, 90, false, createdAt), // not in group
 	}
 
-	groupID := int64(7)
+	groupID := gitlab.NumericID(7)
 	from := domain.NewDate(2026, time.March, 1)
 	to := domain.NewDate(2026, time.March, 31)
 	p := Params{
@@ -150,7 +217,7 @@ func TestEventsCandidates_groupScopeDropsEventsFromOtherProjects(t *testing.T) {
 		commentEventsFn: func(ctx context.Context, userID int64, window domain.DateRange) ([]gitlab.CommentEvent, error) {
 			return events, nil
 		},
-		groupProjectsFn: func(ctx context.Context, gotGroupID int64) ([]domain.Project, error) {
+		groupProjectsFn: func(ctx context.Context, gotGroupID gitlab.ID) ([]domain.Project, error) {
 			return []domain.Project{{ID: 1}}, nil
 		},
 	}

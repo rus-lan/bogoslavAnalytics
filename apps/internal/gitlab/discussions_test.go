@@ -82,7 +82,7 @@ func TestClient_Discussions_parsesDiscussionNoteDiffNoteAndNullType(t *testing.T
 	defer srv.Close()
 
 	c := NewClient(srv.URL, "token")
-	discussions, err := c.Discussions(t.Context(), 123, 77)
+	discussions, err := c.Discussions(t.Context(), NumericID(123), 77)
 	if err != nil {
 		t.Fatalf("Discussions() error = %v", err)
 	}
@@ -136,7 +136,7 @@ func TestClient_Discussions_unknownFieldsDoNotBreakParsing(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClient(srv.URL, "token")
-	discussions, err := c.Discussions(t.Context(), 123, 77)
+	discussions, err := c.Discussions(t.Context(), NumericID(123), 77)
 	if err != nil {
 		t.Fatalf("Discussions() error = %v, want success even with unknown fields present", err)
 	}
@@ -157,7 +157,7 @@ func TestClient_Discussions_neverRequestsNotesPath(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClient(srv.URL, "token")
-	if _, err := c.Discussions(t.Context(), 123, 77); err != nil {
+	if _, err := c.Discussions(t.Context(), NumericID(123), 77); err != nil {
 		t.Fatalf("Discussions() error = %v", err)
 	}
 	for _, p := range pathsHit {

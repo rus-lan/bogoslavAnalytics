@@ -76,14 +76,14 @@ func TestBruteforceCandidates_preFilterSkipsUserNotesCountBelowMoreThan(t *testi
 }
 
 func TestMRListerFor_selectsProjectGroupOrGlobalByScope(t *testing.T) {
-	projectID := int64(11)
-	groupID := int64(22)
+	projectID := gitlab.NumericID(11)
+	groupID := gitlab.NumericID(22)
 	window := gitlab.MergeRequestWindow{}
 
 	t.Run("project scope", func(t *testing.T) {
-		var gotProjectID int64
+		var gotProjectID gitlab.ID
 		client := &fakeClient{
-			projectMergeRequestsFn: func(ctx context.Context, id int64, w gitlab.MergeRequestWindow) ([]gitlab.MergeRequestSummary, error) {
+			projectMergeRequestsFn: func(ctx context.Context, id gitlab.ID, w gitlab.MergeRequestWindow) ([]gitlab.MergeRequestSummary, error) {
 				gotProjectID = id
 				return nil, nil
 			},
@@ -93,14 +93,14 @@ func TestMRListerFor_selectsProjectGroupOrGlobalByScope(t *testing.T) {
 			t.Fatalf("list() error = %v", err)
 		}
 		if gotProjectID != projectID {
-			t.Errorf("ProjectMergeRequests called with %d, want %d", gotProjectID, projectID)
+			t.Errorf("ProjectMergeRequests called with %s, want %s", gotProjectID, projectID)
 		}
 	})
 
 	t.Run("group scope", func(t *testing.T) {
-		var gotGroupID int64
+		var gotGroupID gitlab.ID
 		client := &fakeClient{
-			groupMergeRequestsFn: func(ctx context.Context, id int64, w gitlab.MergeRequestWindow) ([]gitlab.MergeRequestSummary, error) {
+			groupMergeRequestsFn: func(ctx context.Context, id gitlab.ID, w gitlab.MergeRequestWindow) ([]gitlab.MergeRequestSummary, error) {
 				gotGroupID = id
 				return nil, nil
 			},
@@ -110,7 +110,7 @@ func TestMRListerFor_selectsProjectGroupOrGlobalByScope(t *testing.T) {
 			t.Fatalf("list() error = %v", err)
 		}
 		if gotGroupID != groupID {
-			t.Errorf("GroupMergeRequests called with %d, want %d", gotGroupID, groupID)
+			t.Errorf("GroupMergeRequests called with %s, want %s", gotGroupID, groupID)
 		}
 	})
 
@@ -128,6 +128,55 @@ func TestMRListerFor_selectsProjectGroupOrGlobalByScope(t *testing.T) {
 		}
 		if !called {
 			t.Error("MergeRequests was not called for the global scope")
+		}
+	})
+}
+
+// TestMRListerFor_pathScopeGoesStraightThroughWithoutLookup proves the
+// benefit TZ.md section 14, item 1 now resolves for bruteforce: a
+// namespaced project or group path goes straight into the corresponding
+// :id path parameter, with no separate resolution call first. fakeClient's
+// groupProjectsFn is intentionally left nil, so any attempt to resolve the
+// path via a lookup call would panic instead of silently succeeding.
+func TestMRListerFor_pathScopeGoesStraightThroughWithoutLookup(t *testing.T) {
+	window := gitlab.MergeRequestWindow{}
+
+	t.Run("project path scope", func(t *testing.T) {
+		project := gitlab.PathID("my-group/my-project")
+		var gotProject gitlab.ID
+		client := &fakeClient{
+			projectMergeRequestsFn: func(ctx context.Context, id gitlab.ID, w gitlab.MergeRequestWindow) ([]gitlab.MergeRequestSummary, error) {
+				gotProject = id
+				return nil, nil
+			},
+		}
+		list := mrListerFor(client, Scope{ProjectID: &project})
+		if _, err := list(context.Background(), window); err != nil {
+			t.Fatalf("list() error = %v", err)
+		}
+		if gotProject != project {
+			t.Errorf("ProjectMergeRequests called with %s, want %s (path passed straight through)", gotProject, project)
+		}
+		if client.getProjectCalls != 0 {
+			t.Errorf("GetProject() called %d times, want 0 (bruteforce needs no path resolution)", client.getProjectCalls)
+		}
+	})
+
+	t.Run("group path scope", func(t *testing.T) {
+		group := gitlab.PathID("my-group/subgroup")
+		var gotGroup gitlab.ID
+		client := &fakeClient{
+			groupMergeRequestsFn: func(ctx context.Context, id gitlab.ID, w gitlab.MergeRequestWindow) ([]gitlab.MergeRequestSummary, error) {
+				gotGroup = id
+				return nil, nil
+			},
+		}
+		list := mrListerFor(client, Scope{GroupID: &group})
+		if _, err := list(context.Background(), window); err != nil {
+			t.Fatalf("list() error = %v", err)
+		}
+		if gotGroup != group {
+			t.Errorf("GroupMergeRequests called with %s, want %s (path passed straight through)", gotGroup, group)
 		}
 	})
 }

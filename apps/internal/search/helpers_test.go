@@ -14,13 +14,16 @@ import (
 // function field is nil, so a test that does not expect a call to fire
 // finds out immediately instead of silently getting zero values.
 type fakeClient struct {
-	commentEventsFn        func(ctx context.Context, userID int64, window domain.DateRange) ([]gitlab.CommentEvent, error)
-	discussionsFn          func(ctx context.Context, projectID, mrIID int64) ([]domain.Discussion, error)
-	groupProjectsFn        func(ctx context.Context, groupID int64) ([]domain.Project, error)
-	mergeRequestsFn        func(ctx context.Context, window gitlab.MergeRequestWindow) ([]gitlab.MergeRequestSummary, error)
-	groupMergeRequestsFn   func(ctx context.Context, groupID int64, window gitlab.MergeRequestWindow) ([]gitlab.MergeRequestSummary, error)
-	projectMergeRequestsFn func(ctx context.Context, projectID int64, window gitlab.MergeRequestWindow) ([]gitlab.MergeRequestSummary, error)
-	smokeTestFn            func(ctx context.Context, userID int64) (domain.SmokeResult, error)
+	commentEventsFn              func(ctx context.Context, userID int64, window domain.DateRange) ([]gitlab.CommentEvent, error)
+	discussionsFn                func(ctx context.Context, project gitlab.ID, mrIID int64) ([]domain.Discussion, error)
+	getProjectFn                 func(ctx context.Context, project gitlab.ID) (domain.Project, error)
+	getProjectCalls              int
+	groupProjectsFn              func(ctx context.Context, group gitlab.ID) ([]domain.Project, error)
+	mergeRequestsFn              func(ctx context.Context, window gitlab.MergeRequestWindow) ([]gitlab.MergeRequestSummary, error)
+	groupMergeRequestsFn         func(ctx context.Context, group gitlab.ID, window gitlab.MergeRequestWindow) ([]gitlab.MergeRequestSummary, error)
+	projectMergeRequestsFn       func(ctx context.Context, project gitlab.ID, window gitlab.MergeRequestWindow) ([]gitlab.MergeRequestSummary, error)
+	projectMergeRequestsByIIDsFn func(ctx context.Context, project gitlab.ID, iids []int64) ([]gitlab.MergeRequestSummary, error)
+	smokeTestFn                  func(ctx context.Context, userID int64) (domain.SmokeResult, error)
 }
 
 func (f *fakeClient) CommentEvents(ctx context.Context, userID int64, window domain.DateRange) ([]gitlab.CommentEvent, error) {
@@ -30,18 +33,26 @@ func (f *fakeClient) CommentEvents(ctx context.Context, userID int64, window dom
 	return f.commentEventsFn(ctx, userID, window)
 }
 
-func (f *fakeClient) Discussions(ctx context.Context, projectID, mrIID int64) ([]domain.Discussion, error) {
+func (f *fakeClient) Discussions(ctx context.Context, project gitlab.ID, mrIID int64) ([]domain.Discussion, error) {
 	if f.discussionsFn == nil {
 		panic("fakeClient: Discussions called but not configured")
 	}
-	return f.discussionsFn(ctx, projectID, mrIID)
+	return f.discussionsFn(ctx, project, mrIID)
 }
 
-func (f *fakeClient) GroupProjects(ctx context.Context, groupID int64) ([]domain.Project, error) {
+func (f *fakeClient) GetProject(ctx context.Context, project gitlab.ID) (domain.Project, error) {
+	f.getProjectCalls++
+	if f.getProjectFn == nil {
+		panic("fakeClient: GetProject called but not configured")
+	}
+	return f.getProjectFn(ctx, project)
+}
+
+func (f *fakeClient) GroupProjects(ctx context.Context, group gitlab.ID) ([]domain.Project, error) {
 	if f.groupProjectsFn == nil {
 		panic("fakeClient: GroupProjects called but not configured")
 	}
-	return f.groupProjectsFn(ctx, groupID)
+	return f.groupProjectsFn(ctx, group)
 }
 
 func (f *fakeClient) MergeRequests(ctx context.Context, window gitlab.MergeRequestWindow) ([]gitlab.MergeRequestSummary, error) {
@@ -51,18 +62,25 @@ func (f *fakeClient) MergeRequests(ctx context.Context, window gitlab.MergeReque
 	return f.mergeRequestsFn(ctx, window)
 }
 
-func (f *fakeClient) GroupMergeRequests(ctx context.Context, groupID int64, window gitlab.MergeRequestWindow) ([]gitlab.MergeRequestSummary, error) {
+func (f *fakeClient) GroupMergeRequests(ctx context.Context, group gitlab.ID, window gitlab.MergeRequestWindow) ([]gitlab.MergeRequestSummary, error) {
 	if f.groupMergeRequestsFn == nil {
 		panic("fakeClient: GroupMergeRequests called but not configured")
 	}
-	return f.groupMergeRequestsFn(ctx, groupID, window)
+	return f.groupMergeRequestsFn(ctx, group, window)
 }
 
-func (f *fakeClient) ProjectMergeRequests(ctx context.Context, projectID int64, window gitlab.MergeRequestWindow) ([]gitlab.MergeRequestSummary, error) {
+func (f *fakeClient) ProjectMergeRequests(ctx context.Context, project gitlab.ID, window gitlab.MergeRequestWindow) ([]gitlab.MergeRequestSummary, error) {
 	if f.projectMergeRequestsFn == nil {
 		panic("fakeClient: ProjectMergeRequests called but not configured")
 	}
-	return f.projectMergeRequestsFn(ctx, projectID, window)
+	return f.projectMergeRequestsFn(ctx, project, window)
+}
+
+func (f *fakeClient) ProjectMergeRequestsByIIDs(ctx context.Context, project gitlab.ID, iids []int64) ([]gitlab.MergeRequestSummary, error) {
+	if f.projectMergeRequestsByIIDsFn == nil {
+		panic("fakeClient: ProjectMergeRequestsByIIDs called but not configured")
+	}
+	return f.projectMergeRequestsByIIDsFn(ctx, project, iids)
 }
 
 func (f *fakeClient) SmokeTest(ctx context.Context, userID int64) (domain.SmokeResult, error) {

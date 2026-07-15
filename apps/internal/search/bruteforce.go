@@ -17,18 +17,22 @@ type mrLister func(ctx context.Context, window gitlab.MergeRequestWindow) ([]git
 
 // mrListerFor picks the merge request listing call for p.Scope: a single
 // project, a single group (including subgroups), or -- when neither is
-// set -- every project visible to the token (TZ.md section 5.2.1).
+// set -- every project visible to the token (TZ.md section 5.2.1). A
+// project or group scope's gitlab.ID goes straight into the corresponding
+// :id path parameter, whether it holds a numeric id or a namespaced path:
+// no resolution step is needed here (TZ.md section 14, item 1, now
+// resolved for :id path parameters).
 func mrListerFor(client Client, s Scope) mrLister {
 	switch {
 	case s.ProjectID != nil:
-		projectID := *s.ProjectID
+		project := *s.ProjectID
 		return func(ctx context.Context, w gitlab.MergeRequestWindow) ([]gitlab.MergeRequestSummary, error) {
-			return client.ProjectMergeRequests(ctx, projectID, w)
+			return client.ProjectMergeRequests(ctx, project, w)
 		}
 	case s.GroupID != nil:
-		groupID := *s.GroupID
+		group := *s.GroupID
 		return func(ctx context.Context, w gitlab.MergeRequestWindow) ([]gitlab.MergeRequestSummary, error) {
-			return client.GroupMergeRequests(ctx, groupID, w)
+			return client.GroupMergeRequests(ctx, group, w)
 		}
 	default:
 		return client.MergeRequests

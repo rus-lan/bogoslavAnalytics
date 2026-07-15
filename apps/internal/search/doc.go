@@ -10,7 +10,9 @@
 // interface, but no function in this package ever names the concrete
 // *gitlab.Client type.
 //
-// Every id Find and its helpers take is already numeric: resolving
-// --user (username or id) and a --group/--project path to a numeric id,
-// and routing the point mode of TZ.md section 7.2, are the caller's job.
+// Resolving --user (username or id) to a numeric id, and routing the
+// point mode of TZ.md section 7.2, are the caller's job. A --group or
+// --project path needs no such resolution: Params.Scope carries a
+// gitlab.ID, which goes straight into gitlab/'s :id parameters whether it
+// holds a numeric id or a namespaced path.
 package search

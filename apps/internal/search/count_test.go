@@ -38,10 +38,11 @@ func TestCountComments_usesDiscussionsDataAndMatchesHandComputedFixture(t *testi
 	// Hand-computed exact count: notes 1, 2, 6 -> 3.
 	const want = 3
 
-	var gotProjectID, gotMRIID int64
+	var gotProject gitlab.ID
+	var gotMRIID int64
 	client := &fakeClient{
-		discussionsFn: func(ctx context.Context, projectID, mrIID int64) ([]domain.Discussion, error) {
-			gotProjectID, gotMRIID = projectID, mrIID
+		discussionsFn: func(ctx context.Context, project gitlab.ID, mrIID int64) ([]domain.Discussion, error) {
+			gotProject, gotMRIID = project, mrIID
 			return discussions, nil
 		},
 	}
@@ -53,8 +54,8 @@ func TestCountComments_usesDiscussionsDataAndMatchesHandComputedFixture(t *testi
 	if got != want {
 		t.Errorf("CountComments() = %d, want %d", got, want)
 	}
-	if gotProjectID != 123 || gotMRIID != 77 {
-		t.Errorf("Discussions() called with project=%d mr=%d, want project=123 mr=77", gotProjectID, gotMRIID)
+	if gotProject != gitlab.NumericID(123) || gotMRIID != 77 {
+		t.Errorf("Discussions() called with project=%s mr=%d, want project=123 mr=77", gotProject, gotMRIID)
 	}
 }
 
@@ -70,7 +71,7 @@ func TestCountComments_neverCallsNotesEndpoint(t *testing.T) {
 
 	called := false
 	client := &fakeClient{
-		discussionsFn: func(ctx context.Context, projectID, mrIID int64) ([]domain.Discussion, error) {
+		discussionsFn: func(ctx context.Context, project gitlab.ID, mrIID int64) ([]domain.Discussion, error) {
 			called = true
 			return nil, nil
 		},
@@ -90,7 +91,7 @@ func TestCountComments_propagatesDiscussionsError(t *testing.T) {
 
 	wantErr := gitlab.ErrRateLimited
 	client := &fakeClient{
-		discussionsFn: func(ctx context.Context, projectID, mrIID int64) ([]domain.Discussion, error) {
+		discussionsFn: func(ctx context.Context, project gitlab.ID, mrIID int64) ([]domain.Discussion, error) {
 			return nil, wantErr
 		},
 	}

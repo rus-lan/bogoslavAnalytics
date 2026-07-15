@@ -25,8 +25,10 @@ import (
 //
 // If the listing hits the page limit, the discussions collected so far are
 // returned together with ErrPageLimitReached.
-func (c *Client) Discussions(ctx context.Context, projectID, mrIID int64) ([]domain.Discussion, error) {
-	path := fmt.Sprintf("/projects/%d/merge_requests/%d/discussions", projectID, mrIID)
+//
+// project may be a numeric id or a namespaced path (ID).
+func (c *Client) Discussions(ctx context.Context, project ID, mrIID int64) ([]domain.Discussion, error) {
+	path := fmt.Sprintf("/projects/%s/merge_requests/%d/discussions", project.segment(), mrIID)
 
 	items, err := paginate(ctx, func(ctx context.Context, page int) ([]domain.Discussion, error) {
 		q := url.Values{}
@@ -49,7 +51,7 @@ func (c *Client) Discussions(ctx context.Context, projectID, mrIID int64) ([]dom
 		return pageItems, nil
 	})
 	if err != nil && !errors.Is(err, ErrPageLimitReached) {
-		return nil, fmt.Errorf("gitlab: discussions for project %d mr %d: %w", projectID, mrIID, err)
+		return nil, fmt.Errorf("gitlab: discussions for project %s mr %d: %w", project, mrIID, err)
 	}
 	return items, err
 }
