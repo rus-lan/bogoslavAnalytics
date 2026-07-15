@@ -1,8 +1,17 @@
 package main
 
-import "fmt"
+import (
+	"context"
+	"os"
+	"os/signal"
+	"syscall"
+)
 
-// TODO: implement the skill generator and installer per TZ.md section 9.
 func main() {
-	fmt.Println("bogoslav-skills: not yet implemented")
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	if err := newRootCmd().ExecuteContext(ctx); err != nil {
+		os.Exit(1)
+	}
 }
