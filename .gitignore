@@ -1,0 +1,28 @@
+# OS
+.DS_Store
+
+# Editor
+*.backup
+.idea/
+
+# Build
+bin/
+dist/
+coverage.out
+
+# Environment
+.env
+.env.local
+
+# Research output (ephemeral)
+.research/
+
+# Verification artifacts (ephemeral)
+screenshots/
+.playwright-mcp/
+
+# Local Claude settings
+.claude/settings.local.json
+
+# Generated artifacts (the tool's own output)
+artifacts/
