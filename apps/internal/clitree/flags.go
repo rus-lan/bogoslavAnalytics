@@ -11,10 +11,13 @@ import (
 
 // commonOutputFlags are the three flags every command in this tree
 // carries (TZ.md section 3, section 4): --format chooses the wire
-// format the result is rendered in, --artifacts-dir is the directory a
-// command's result is written under (and, on the commands that cache,
-// looked up in first), and --out redirects the copy of the result this
-// command prints away from stdout and into a file instead.
+// format the result is rendered in; --artifacts-dir's exact meaning
+// varies per command -- most write their result under it, some of those
+// also look a matching artifact up there first as a cache, and
+// get-classify-batch only ever reads from it -- so each command passes
+// its own dirUsage describing exactly what it does, never a
+// one-size-fits-all description; and --out redirects the copy of the
+// result this command prints away from stdout and into a file instead.
 type commonOutputFlags struct {
 	format string
 	dir    string
@@ -41,12 +44,17 @@ const dirCachedRefresh = `directory the result is written under, and where a mat
 	`artifact is looked up as a cache first; --refresh bypasses that lookup (default "artifacts")`
 
 // dirCachedNoRefresh is the --artifacts-dir help for get-classify-batch:
-// it also looks a matching artifact up there first as a cache, but has
-// no --refresh flag to bypass that lookup (TZ.md section 8.4: the
-// labeling cache is keyed by content, not by age).
-const dirCachedNoRefresh = `directory the result is written under, and where a matching ` +
-	`labeled_comments artifact from the same batch, --model and taxonomy version is looked up as ` +
-	`a cache first; there is no --refresh flag here to bypass that lookup (default "artifacts")`
+// unlike find-mrs and get-comments, it never writes anything under this
+// directory itself -- on a cache miss it hands back a batch/taxonomy/
+// schema/prompt for the calling agent to label, and save-labels is what
+// eventually writes artifact-3, not this command (TZ.md section 8.1). It
+// only looks a matching artifact up there first, as a cache, and has no
+// --refresh flag to bypass that lookup (TZ.md section 8.4: the labeling
+// cache is keyed by content, not by age).
+const dirCachedNoRefresh = `directory a matching labeled_comments artifact from the same batch, ` +
+	`--model and taxonomy version is looked up in as a cache; get-classify-batch never writes ` +
+	`anything under this directory itself, and there is no --refresh flag to bypass that lookup ` +
+	`(default "artifacts")`
 
 // dirNoCache is the --artifacts-dir help for commands that always write
 // a result under it but never look one up as a cache (filter-comments,

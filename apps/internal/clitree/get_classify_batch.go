@@ -123,6 +123,7 @@ func runGetClassifyBatch(cmd *cobra.Command, flags getClassifyBatchFlags) error 
 
 	if result.Cached {
 		reportCacheHit(cmd, true, result.ArtifactPath)
+		reportFormatMismatch(cmd, format, result.ArtifactPath)
 		return writeArtifactResult(cmd, result.ArtifactPath, flags.out.out)
 	}
 

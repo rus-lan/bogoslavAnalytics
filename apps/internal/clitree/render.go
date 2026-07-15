@@ -85,6 +85,25 @@ func reportCacheHit(cmd *cobra.Command, hit bool, path string) {
 	}
 }
 
+// reportFormatMismatch tells the user, on stderr, when a cache hit's
+// existing artifact is not in the requested --format: cache.Lookup only
+// ever matches a json or yaml file (TZ.md section 4), so a cache hit
+// found while --format asks for a different format (for example text or
+// html, or even the other of json/yaml) silently hands back the existing
+// file as-is -- writeArtifactResult sends that file's own bytes, in its
+// own format, to --out or stdout, and nothing is ever written in the
+// requested format. This is the one place --format is not honored on a
+// cache hit, so it is reported rather than left silent.
+func reportFormatMismatch(cmd *cobra.Command, requested artifact.Format, path string) {
+	actual, err := artifact.FormatFromPath(path)
+	if err != nil || actual == requested {
+		return
+	}
+	fmt.Fprintf(cmd.ErrOrStderr(),
+		"note: --format %s not honored on this cache hit: existing artifact %s is %s\n",
+		requested, path, actual)
+}
+
 // reportStrategy tells the user, on stderr, which merge request search
 // strategy actually ran and what its smoke test found (TZ.md: "It changes
 // what the numbers mean and the user never chose it -- the autoselector

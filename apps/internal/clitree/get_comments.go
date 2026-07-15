@@ -160,6 +160,9 @@ func runGetComments(cmd *cobra.Command, flags getCommentsFlags) error {
 	}
 
 	reportCacheHit(cmd, result.CacheHit, result.Path)
+	if result.CacheHit {
+		reportFormatMismatch(cmd, req.Format, result.Path)
+	}
 
 	return writeArtifactResult(cmd, result.Path, flags.out.out)
 }

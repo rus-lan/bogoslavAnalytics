@@ -144,6 +144,9 @@ func runFindMRs(cmd *cobra.Command, flags findMRsFlags) error {
 	}
 
 	reportCacheHit(cmd, result.CacheHit, result.Path)
+	if result.CacheHit {
+		reportFormatMismatch(cmd, req.Format, result.Path)
+	}
 	reportStrategy(cmd, result.Doc.Query)
 
 	return writeArtifactResult(cmd, result.Path, flags.out.out)

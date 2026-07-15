@@ -95,23 +95,9 @@ func readStats(path string) (stats.Stats, error) {
 // GetStatsRequest's doc comment) and writes it to
 // "<dir>/stats_<source artifact base name>.<ext>".
 func writeStats(s stats.Stats, format artifact.Format, dir, sourcePath string) (string, error) {
-	var data []byte
-	var ext string
-	switch format {
-	case artifact.FormatJSON:
-		b, err := json.MarshalIndent(s, "", "  ")
-		if err != nil {
-			return "", fmt.Errorf("marshal json: %w", err)
-		}
-		data, ext = append(b, '\n'), "json"
-	case artifact.FormatYAML:
-		b, err := yaml.Marshal(s)
-		if err != nil {
-			return "", fmt.Errorf("marshal yaml: %w", err)
-		}
-		data, ext = b, "yaml"
-	default:
-		return "", fmt.Errorf("format %q: %w", format, artifact.ErrUnsupportedFormat)
+	data, ext, err := marshalStats(s, format)
+	if err != nil {
+		return "", err
 	}
 
 	base := strings.TrimSuffix(filepath.Base(sourcePath), filepath.Ext(sourcePath))
@@ -124,4 +110,40 @@ func writeStats(s stats.Stats, format artifact.Format, dir, sourcePath string) (
 		return "", fmt.Errorf("write file %q: %w", path, err)
 	}
 	return path, nil
+}
+
+// marshalStats renders s as json or yaml, always through JSON first: s
+// carries only json struct tags, so calling yaml.Marshal(s) directly
+// would have yaml.v3 ignore those tags and fall back to lowercasing the
+// Go field names with no underscores (source_kind would become
+// "sourcekind"), which also disagrees with the same result rendered to
+// stdout for a run without --artifacts-dir. Marshaling to JSON first and
+// decoding that JSON into a generic value before handing it to
+// yaml.Marshal is the same technique the get-stats command already uses
+// for its stdout rendering (marshalJSONOrYAML in internal/clitree) and
+// the one artifact/codec.go's marshalYAML uses for the four cached
+// artifact kinds, so that json and yaml renderings of the same value
+// never drift apart on field names.
+func marshalStats(s stats.Stats, format artifact.Format) (data []byte, ext string, err error) {
+	jsonData, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return nil, "", fmt.Errorf("marshal json: %w", err)
+	}
+
+	switch format {
+	case artifact.FormatJSON:
+		return append(jsonData, '\n'), "json", nil
+	case artifact.FormatYAML:
+		var generic any
+		if err := json.Unmarshal(jsonData, &generic); err != nil {
+			return nil, "", fmt.Errorf("decode json for yaml conversion: %w", err)
+		}
+		out, err := yaml.Marshal(generic)
+		if err != nil {
+			return nil, "", fmt.Errorf("marshal yaml: %w", err)
+		}
+		return out, "yaml", nil
+	default:
+		return nil, "", fmt.Errorf("format %q: %w", format, artifact.ErrUnsupportedFormat)
+	}
 }
