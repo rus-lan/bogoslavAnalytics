@@ -1,6 +1,6 @@
 package mcptool
 
-import "github.com/rus-lan/bogoslav-analytics/apps/internal/artifact"
+import "github.com/rus-lan/bogoslavAnalytics/apps/internal/artifact"
 
 // GetCommentsInput is the get_comments tool's input: the MCP mirror of
 // bogoslav-cli's get-comments command and app.GetCommentsRequest (TZ.md

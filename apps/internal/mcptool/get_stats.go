@@ -1,6 +1,6 @@
 package mcptool
 
-import "github.com/rus-lan/bogoslav-analytics/apps/internal/stats"
+import "github.com/rus-lan/bogoslavAnalytics/apps/internal/stats"
 
 // GetStatsInput is the get_stats tool's input: the MCP mirror of
 // bogoslav-cli's get-stats command and app.GetStatsRequest (TZ.md

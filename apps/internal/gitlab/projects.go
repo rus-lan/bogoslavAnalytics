@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/domain"
 )
 
 // projectWire is the subset of a GitLab project object GetProject needs to

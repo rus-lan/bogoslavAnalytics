@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/domain"
 )
 
 // TestValidate_rejectsLabelOutsideTaxonomy is the acceptance check for

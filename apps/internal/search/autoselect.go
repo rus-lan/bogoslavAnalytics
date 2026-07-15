@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/domain"
 )
 
 // DefaultRetentionYears is the default events-table retention window

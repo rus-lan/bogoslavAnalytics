@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/gitlab"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/domain"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/gitlab"
 )
 
 func TestCountComments_usesDiscussionsDataAndMatchesHandComputedFixture(t *testing.T) {

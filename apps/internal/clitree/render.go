@@ -8,8 +8,8 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/artifact"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/artifact"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/domain"
 )
 
 // writeResult sends data to cmd's --out file when out is set, or to

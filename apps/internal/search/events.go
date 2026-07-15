@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/gitlab"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/domain"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/gitlab"
 )
 
 // noteableTypeMergeRequest is the note.noteable_type value that marks a

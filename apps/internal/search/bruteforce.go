@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/gitlab"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/domain"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/gitlab"
 )
 
 // mrLister lists one page-limited window of merge requests. It abstracts

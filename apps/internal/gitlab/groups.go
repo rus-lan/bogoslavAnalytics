@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/domain"
 )
 
 // groupProjectWire is the subset of a GitLab project object needed to

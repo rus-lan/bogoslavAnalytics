@@ -1,6 +1,6 @@
 package search
 
-import "github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
+import "github.com/rus-lan/bogoslavAnalytics/apps/internal/domain"
 
 // Result is the outcome of Find: the strategy actually used, the smoke
 // test result behind that choice, and the merge requests found, each

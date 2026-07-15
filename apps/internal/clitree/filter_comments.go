@@ -6,9 +6,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/app"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/gitlab"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/app"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/domain"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/gitlab"
 )
 
 // filterCommentsFlags holds the raw --flag values for filter-comments

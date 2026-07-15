@@ -3,10 +3,10 @@ package app
 import (
 	"fmt"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/artifact"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/cache"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/filter"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/artifact"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/cache"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/domain"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/filter"
 )
 
 // FilterCommentsRequest is the input to FilterComments, mirroring the

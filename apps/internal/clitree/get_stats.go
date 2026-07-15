@@ -5,8 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/app"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/artifact"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/app"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/artifact"
 )
 
 // getStatsFlags holds the raw --flag values for get-stats before they

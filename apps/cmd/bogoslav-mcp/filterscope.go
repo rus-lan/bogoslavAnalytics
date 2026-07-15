@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/gitlab"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/gitlab"
 )
 
 // resolveFilterScope resolves group/project into the numeric ids

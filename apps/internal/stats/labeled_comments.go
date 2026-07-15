@@ -1,6 +1,6 @@
 package stats
 
-import "github.com/rus-lan/bogoslav-analytics/apps/internal/artifact"
+import "github.com/rus-lan/bogoslavAnalytics/apps/internal/artifact"
 
 // FromLabeledComments aggregates a labeled_comments artifact: TotalItems,
 // ByMR, ByLabel, and ByDate are all filled (TZ.md section 7.2.1).

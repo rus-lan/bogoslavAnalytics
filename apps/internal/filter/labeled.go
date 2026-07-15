@@ -1,8 +1,8 @@
 package filter
 
 import (
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/artifact"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/artifact"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/domain"
 )
 
 // ByDate keeps only labeled_comments / filtered_comments rows whose

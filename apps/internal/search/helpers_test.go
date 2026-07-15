@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/gitlab"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/domain"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/gitlab"
 )
 
 // fakeClient is an in-memory search.Client used by every test in this

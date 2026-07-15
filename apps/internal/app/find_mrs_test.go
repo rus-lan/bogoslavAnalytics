@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/artifact"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/gitlab"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/search"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/artifact"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/domain"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/gitlab"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/search"
 )
 
 // int64Ptr returns a pointer to n, for building FindMRsRequest.MR values.
@@ -76,6 +76,263 @@ func TestFindMRs_cacheHitSkipsSearchAndNumericUserMakesNoResolveCalls(t *testing
 // even when req.Now returns a non-UTC clock reading, the written
 // artifact's Source.FetchedAt must carry UTC. This fails if the .UTC()
 // call at the Source{} site is reverted.
+// TestFindMRs_artifactCacheHitWithUsernameMakesZeroGitLabCalls is the
+// regression this wiring exists for (TZ.md sections 5.0, 14 item 15): before
+// ResolveUserCached, req.User being a username meant every artifact cache
+// hit still paid for one GET /users?username= call, because ResolveUser ran
+// before cache.Lookup on every call. With the resolved-user cache in place,
+// a second call with the same username-bearing request makes zero GitLab
+// calls of any kind.
+func TestFindMRs_artifactCacheHitWithUsernameMakesZeroGitLabCalls(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, time.July, 15, 12, 0, 0, 0, time.UTC)
+	at := time.Date(2026, time.March, 10, 12, 0, 0, 0, time.UTC)
+
+	req := FindMRsRequest{
+		GitlabURL: "https://gitlab.example.com",
+		User:      "alice",
+		From:      domain.NewDate(2026, time.January, 1),
+		To:        domain.NewDate(2026, time.June, 30),
+		MoreThan:  3,
+		Strict:    true,
+		Dir:       dir,
+		Now:       func() time.Time { return now },
+	}
+
+	summaries := []gitlab.MergeRequestSummary{
+		{MergeRequest: domain.MergeRequest{ProjectID: 1, IID: 7}, UserNotesCount: 10},
+	}
+	client1 := &fakeClient{
+		resolveUserIDFn: func(ctx context.Context, username string) (int64, error) {
+			return 42, nil
+		},
+		mergeRequestsFn: func(ctx context.Context, w gitlab.MergeRequestWindow) ([]gitlab.MergeRequestSummary, error) {
+			return summaries, nil
+		},
+		discussionsFn: func(ctx context.Context, project gitlab.ID, mrIID int64) ([]domain.Discussion, error) {
+			return notesFrom(42, 4, at), nil
+		},
+	}
+
+	result1, err := FindMRs(context.Background(), client1, req)
+	if err != nil {
+		t.Fatalf("FindMRs() first call error = %v", err)
+	}
+	if result1.CacheHit {
+		t.Fatalf("FindMRs() first call CacheHit = true, want false")
+	}
+	if client1.resolveUserIDCalls != 1 {
+		t.Fatalf("FindMRs() first call made %d ResolveUserID calls, want 1", client1.resolveUserIDCalls)
+	}
+
+	// Every method left nil: fakeClient panics on any call, so a second
+	// FindMRs run with the same username-bearing request proves this is a
+	// true zero-GitLab-call cache hit -- both the resolved-user cache and
+	// the artifact cache have to hit for this call to return at all.
+	client2 := &fakeClient{}
+	result2, err := FindMRs(context.Background(), client2, req)
+	if err != nil {
+		t.Fatalf("FindMRs() second call error = %v", err)
+	}
+	if !result2.CacheHit {
+		t.Fatalf("FindMRs() second call CacheHit = false, want true")
+	}
+	if client2.resolveUserIDCalls != 0 {
+		t.Errorf("FindMRs() second call (artifact + resolved-user cache hit) made %d ResolveUserID calls, want 0", client2.resolveUserIDCalls)
+	}
+}
+
+// TestFindMRs_nonStrictSecondRunWithinTTLMakesZeroSmokeTestCalls uses a
+// different MoreThan across the two calls, on purpose: that makes the
+// second call miss the artifact cache and run search.Find again, so the
+// zero SmokeTest calls it asserts can only come from the smoke cache, not
+// from the artifact cache short-circuiting the whole request.
+func TestFindMRs_nonStrictSecondRunWithinTTLMakesZeroSmokeTestCalls(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, time.July, 15, 12, 0, 0, 0, time.UTC)
+	at := time.Date(2026, time.March, 10, 12, 0, 0, 0, time.UTC)
+
+	summaries := []gitlab.MergeRequestSummary{
+		{MergeRequest: domain.MergeRequest{ProjectID: 5, IID: 9, ProjectPath: "my-group/repo"}, UserNotesCount: 10},
+	}
+	makeReq := func(moreThan int) FindMRsRequest {
+		return FindMRsRequest{
+			GitlabURL: "https://gitlab.example.com",
+			User:      "42",
+			From:      domain.NewDate(2026, time.January, 1),
+			To:        domain.NewDate(2026, time.June, 30),
+			MoreThan:  moreThan,
+			Project:   "my-group/repo",
+			Dir:       dir,
+			Now:       func() time.Time { return now },
+		}
+	}
+
+	client := &fakeClient{
+		smokeTestFn: func(ctx context.Context, userID int64) (domain.SmokeResult, error) {
+			return domain.SmokeFailed, nil
+		},
+		projectMergeRequestsFn: func(ctx context.Context, project gitlab.ID, w gitlab.MergeRequestWindow) ([]gitlab.MergeRequestSummary, error) {
+			return summaries, nil
+		},
+		discussionsFn: func(ctx context.Context, project gitlab.ID, mrIID int64) ([]domain.Discussion, error) {
+			return notesFrom(42, 4, at), nil
+		},
+	}
+
+	if _, err := FindMRs(context.Background(), client, makeReq(1)); err != nil {
+		t.Fatalf("FindMRs() first call error = %v", err)
+	}
+	if client.smokeTestCalls != 1 {
+		t.Fatalf("FindMRs() first non-strict call made %d SmokeTest calls, want 1", client.smokeTestCalls)
+	}
+
+	result, err := FindMRs(context.Background(), client, makeReq(2))
+	if err != nil {
+		t.Fatalf("FindMRs() second call error = %v", err)
+	}
+	if result.CacheHit {
+		t.Fatalf("FindMRs() second call (different more_than) CacheHit = true, want false")
+	}
+	if client.smokeTestCalls != 1 {
+		t.Errorf("FindMRs() second non-strict call within TTL made %d total SmokeTest calls, want still 1 (cached)", client.smokeTestCalls)
+	}
+}
+
+func TestFindMRs_expiredSmokeCacheMakesOneMoreCall(t *testing.T) {
+	dir := t.TempDir()
+	t0 := time.Date(2026, time.July, 15, 12, 0, 0, 0, time.UTC)
+	at := time.Date(2026, time.March, 10, 12, 0, 0, 0, time.UTC)
+
+	summaries := []gitlab.MergeRequestSummary{
+		{MergeRequest: domain.MergeRequest{ProjectID: 5, IID: 9, ProjectPath: "my-group/repo"}, UserNotesCount: 10},
+	}
+	makeReq := func(moreThan int, now time.Time) FindMRsRequest {
+		return FindMRsRequest{
+			GitlabURL: "https://gitlab.example.com",
+			User:      "42",
+			From:      domain.NewDate(2026, time.January, 1),
+			To:        domain.NewDate(2026, time.June, 30),
+			MoreThan:  moreThan,
+			Project:   "my-group/repo",
+			Dir:       dir,
+			Cache:     CacheOptions{TTL: time.Hour},
+			Now:       func() time.Time { return now },
+		}
+	}
+
+	client := &fakeClient{
+		smokeTestFn: func(ctx context.Context, userID int64) (domain.SmokeResult, error) {
+			return domain.SmokeFailed, nil
+		},
+		projectMergeRequestsFn: func(ctx context.Context, project gitlab.ID, w gitlab.MergeRequestWindow) ([]gitlab.MergeRequestSummary, error) {
+			return summaries, nil
+		},
+		discussionsFn: func(ctx context.Context, project gitlab.ID, mrIID int64) ([]domain.Discussion, error) {
+			return notesFrom(42, 4, at), nil
+		},
+	}
+
+	if _, err := FindMRs(context.Background(), client, makeReq(1, t0)); err != nil {
+		t.Fatalf("FindMRs() first call error = %v", err)
+	}
+
+	if _, err := FindMRs(context.Background(), client, makeReq(2, t0.Add(2*time.Hour))); err != nil {
+		t.Fatalf("FindMRs() expired call error = %v", err)
+	}
+	if client.smokeTestCalls != 2 {
+		t.Errorf("FindMRs() after smoke cache TTL expiry made %d total SmokeTest calls, want 2", client.smokeTestCalls)
+	}
+}
+
+func TestFindMRs_refreshMakesOneMoreSmokeTestCall(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, time.July, 15, 12, 0, 0, 0, time.UTC)
+	at := time.Date(2026, time.March, 10, 12, 0, 0, 0, time.UTC)
+
+	summaries := []gitlab.MergeRequestSummary{
+		{MergeRequest: domain.MergeRequest{ProjectID: 5, IID: 9, ProjectPath: "my-group/repo"}, UserNotesCount: 10},
+	}
+	makeReq := func(moreThan int, refresh bool) FindMRsRequest {
+		return FindMRsRequest{
+			GitlabURL: "https://gitlab.example.com",
+			User:      "42",
+			From:      domain.NewDate(2026, time.January, 1),
+			To:        domain.NewDate(2026, time.June, 30),
+			MoreThan:  moreThan,
+			Project:   "my-group/repo",
+			Dir:       dir,
+			Cache:     CacheOptions{Refresh: refresh},
+			Now:       func() time.Time { return now },
+		}
+	}
+
+	client := &fakeClient{
+		smokeTestFn: func(ctx context.Context, userID int64) (domain.SmokeResult, error) {
+			return domain.SmokeFailed, nil
+		},
+		projectMergeRequestsFn: func(ctx context.Context, project gitlab.ID, w gitlab.MergeRequestWindow) ([]gitlab.MergeRequestSummary, error) {
+			return summaries, nil
+		},
+		discussionsFn: func(ctx context.Context, project gitlab.ID, mrIID int64) ([]domain.Discussion, error) {
+			return notesFrom(42, 4, at), nil
+		},
+	}
+
+	if _, err := FindMRs(context.Background(), client, makeReq(1, false)); err != nil {
+		t.Fatalf("FindMRs() first call error = %v", err)
+	}
+	if _, err := FindMRs(context.Background(), client, makeReq(2, true)); err != nil {
+		t.Fatalf("FindMRs() refresh call error = %v", err)
+	}
+	if client.smokeTestCalls != 2 {
+		t.Errorf("FindMRs() with Refresh=true made %d total SmokeTest calls, want 2", client.smokeTestCalls)
+	}
+}
+
+// TestFindMRs_strictModeNeverCallsSmokeTest leaves smokeTestFn nil:
+// fakeClient panics if SmokeTest is ever called, proving --strict never
+// probes regardless of caching (TZ.md section 5.3c) -- search.SelectStrategy
+// returns before it would ever reach cachingSmokeClient's SmokeTest.
+func TestFindMRs_strictModeNeverCallsSmokeTest(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, time.July, 15, 12, 0, 0, 0, time.UTC)
+	at := time.Date(2026, time.March, 10, 12, 0, 0, 0, time.UTC)
+
+	summaries := []gitlab.MergeRequestSummary{{MergeRequest: domain.MergeRequest{ProjectID: 1, IID: 7}, UserNotesCount: 10}}
+	makeReq := func(moreThan int) FindMRsRequest {
+		return FindMRsRequest{
+			GitlabURL: "https://gitlab.example.com",
+			User:      "42",
+			From:      domain.NewDate(2026, time.January, 1),
+			To:        domain.NewDate(2026, time.June, 30),
+			MoreThan:  moreThan,
+			Strict:    true,
+			Dir:       dir,
+			Now:       func() time.Time { return now },
+		}
+	}
+
+	client := &fakeClient{
+		mergeRequestsFn: func(ctx context.Context, w gitlab.MergeRequestWindow) ([]gitlab.MergeRequestSummary, error) {
+			return summaries, nil
+		},
+		discussionsFn: func(ctx context.Context, project gitlab.ID, mrIID int64) ([]domain.Discussion, error) {
+			return notesFrom(42, 4, at), nil
+		},
+	}
+
+	if _, err := FindMRs(context.Background(), client, makeReq(1)); err != nil {
+		t.Fatalf("FindMRs() first strict call error = %v", err)
+	}
+	if _, err := FindMRs(context.Background(), client, makeReq(2)); err != nil {
+		t.Fatalf("FindMRs() second strict call error = %v", err)
+	}
+	if client.smokeTestCalls != 0 {
+		t.Errorf("FindMRs() with Strict=true made %d SmokeTest calls, want 0 always", client.smokeTestCalls)
+	}
+}
+
 func TestFindMRs_fetchedAtIsAlwaysUTC(t *testing.T) {
 	dir := t.TempDir()
 	loc := time.FixedZone("MSK", 3*60*60)

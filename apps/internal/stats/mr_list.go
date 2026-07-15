@@ -1,6 +1,6 @@
 package stats
 
-import "github.com/rus-lan/bogoslav-analytics/apps/internal/artifact"
+import "github.com/rus-lan/bogoslavAnalytics/apps/internal/artifact"
 
 // FromMRList aggregates an mr_list artifact. mr_list rows are merge
 // requests, not individually dated or labeled comments, so only

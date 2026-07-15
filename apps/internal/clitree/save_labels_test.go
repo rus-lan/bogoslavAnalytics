@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/app"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/artifact"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/classify"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/app"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/artifact"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/classify"
 )
 
 func TestNewSaveLabelsRequest_mapsFlagsToRequest(t *testing.T) {

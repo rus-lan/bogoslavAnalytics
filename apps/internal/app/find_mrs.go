@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/artifact"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/cache"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/filter"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/search"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/artifact"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/cache"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/domain"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/filter"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/search"
 )
 
 // FindMRsRequest is the input to FindMRs, mirroring the find_mrs tool /
@@ -22,10 +22,16 @@ import (
 // the new object's data until the cached entry ages out -- bounded by
 // Cache.TTL (default cache.DefaultTTL, 24h). This is an accepted risk,
 // not something FindMRs works around.
+//
+// A second, sharper cache hazard applies when User is a username rather
+// than a numeric id: see ResolveUserCached's doc comment (user.go) for
+// the full explanation -- a stale entry surviving a GitLab username
+// rename answers with the wrong *person*, not merely the wrong
+// *selection* the hazard above describes.
 type FindMRsRequest struct {
 	GitlabURL string
 	// User is a numeric id or a username (TZ.md section 5.0); FindMRs
-	// resolves it exactly once via ResolveUser.
+	// resolves it exactly once via ResolveUserCached.
 	User     string
 	From     domain.Date
 	To       domain.Date
@@ -76,7 +82,12 @@ func FindMRs(ctx context.Context, client FindMRsClient, req FindMRsRequest) (Fin
 		return FindMRsResult{}, ErrPointModeRequiresProject
 	}
 
-	userID, err := ResolveUser(ctx, client, req.User)
+	dir := outDir(req.Dir)
+	format := outFormat(req.Format)
+	now := clockOrDefault(req.Now)
+	cacheOpts := cache.Options{Dir: dir, TTL: req.Cache.ttl(), Refresh: req.Cache.Refresh}
+
+	userID, err := ResolveUserCached(ctx, client, req.GitlabURL, req.User, cacheOpts, now())
 	if err != nil {
 		return FindMRsResult{}, fmt.Errorf("find mrs: %w", err)
 	}
@@ -102,13 +113,9 @@ func FindMRs(ctx context.Context, client FindMRsClient, req FindMRsRequest) (Fin
 		return FindMRsResult{}, fmt.Errorf("find mrs: %w", err)
 	}
 
-	dir := outDir(req.Dir)
-	format := outFormat(req.Format)
-	now := clockOrDefault(req.Now)
-
 	path, hit, err := cache.Lookup(
 		string(artifact.KindMRList), hash,
-		cache.Options{Dir: dir, TTL: req.Cache.ttl(), Refresh: req.Cache.Refresh},
+		cacheOpts,
 		&artifact.HeaderStore{}, now(),
 	)
 	if err != nil {
@@ -131,7 +138,12 @@ func FindMRs(ctx context.Context, client FindMRsClient, req FindMRsRequest) (Fin
 		result = search.Result{Items: []domain.MergeRequest{mr}}
 	} else {
 		params := toSearchParams(query)
-		result, err = search.Find(ctx, client, params, search.Options{Strict: req.Strict, Now: now})
+		// cachingSmokeClient wraps client so search.Find's one call to
+		// SmokeTest (inside SelectStrategy, TZ.md section 5.3b) is served
+		// from cache when a fresh entry exists, without search/ itself
+		// changing at all (smoke_cache.go).
+		smokeClient := &cachingSmokeClient{Client: client, gitlabURL: req.GitlabURL, opts: cacheOpts, now: now}
+		result, err = search.Find(ctx, smokeClient, params, search.Options{Strict: req.Strict, Now: now})
 		if err != nil {
 			return FindMRsResult{}, fmt.Errorf("find mrs: %w", err)
 		}

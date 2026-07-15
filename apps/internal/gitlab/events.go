@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/domain"
 )
 
 // EventNote is the note object nested inside a comment CommentEvent

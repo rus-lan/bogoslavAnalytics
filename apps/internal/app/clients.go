@@ -3,9 +3,9 @@ package app
 import (
 	"context"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/gitlab"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/search"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/domain"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/gitlab"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/search"
 )
 
 // UserResolver resolves a GitLab username to its numeric id (TZ.md

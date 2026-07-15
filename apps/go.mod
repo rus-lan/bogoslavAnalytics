@@ -1,6 +1,6 @@
-module github.com/rus-lan/bogoslav-analytics/apps
+module github.com/rus-lan/bogoslavAnalytics/apps
 
-go 1.26
+go 1.25.0
 
 require gopkg.in/yaml.v3 v3.0.1
 

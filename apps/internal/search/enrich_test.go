@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/gitlab"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/domain"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/gitlab"
 )
 
 func TestEnrichEventsCandidates_oneCallPerProjectNotPerMR(t *testing.T) {

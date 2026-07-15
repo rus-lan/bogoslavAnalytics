@@ -1,6 +1,6 @@
 package filter
 
-import "github.com/rus-lan/bogoslav-analytics/apps/internal/artifact"
+import "github.com/rus-lan/bogoslavAnalytics/apps/internal/artifact"
 
 // MRsByCount keeps only mr_list rows whose comment count is strictly
 // greater than moreThan. This is the final threshold predicate pinned by

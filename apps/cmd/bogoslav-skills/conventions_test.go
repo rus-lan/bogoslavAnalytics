@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/clitree"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/clitree"
 )
 
 func TestRenderConventionsMarkdown_hasNoFrontmatterAndListsEveryCommand(t *testing.T) {

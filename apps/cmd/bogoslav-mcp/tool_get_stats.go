@@ -6,8 +6,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/app"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/mcptool"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/app"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/mcptool"
 )
 
 // newGetStatsRequest converts in into an app.GetStatsRequest.

@@ -7,8 +7,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/gitlab"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/mcptool"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/gitlab"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/mcptool"
 )
 
 // TestSaveLabels_endToEndOverInMemoryTransport is an end-to-end check

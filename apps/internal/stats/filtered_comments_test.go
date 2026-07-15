@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/artifact"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/stats"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/artifact"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/stats"
 )
 
 // TestFromFilteredComments_matchesHandComputedFixture reuses the same

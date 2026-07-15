@@ -3,7 +3,7 @@ package artifact
 import (
 	"time"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/domain"
 )
 
 // MRItem is a single mr_list row: a merge request together with the

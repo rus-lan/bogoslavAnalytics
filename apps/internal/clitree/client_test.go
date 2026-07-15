@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/gitlab"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/gitlab"
 )
 
 // TestNewGitlabClient_missingTokenReturnsClearError proves a missing

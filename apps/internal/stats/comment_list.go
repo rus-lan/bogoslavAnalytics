@@ -1,6 +1,6 @@
 package stats
 
-import "github.com/rus-lan/bogoslav-analytics/apps/internal/artifact"
+import "github.com/rus-lan/bogoslavAnalytics/apps/internal/artifact"
 
 // FromCommentList aggregates a comment_list artifact: TotalItems, ByMR,
 // and ByDate are filled. ByLabel stays empty, since comment_list rows

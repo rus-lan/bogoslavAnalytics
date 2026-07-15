@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/domain"
 )
 
 // wholeSecondRFC3339Pattern matches exactly "YYYY-MM-DDTHH:MM:SSZ": the

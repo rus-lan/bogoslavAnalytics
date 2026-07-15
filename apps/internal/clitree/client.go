@@ -5,7 +5,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/gitlab"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/gitlab"
 )
 
 // defaultGitlabURL is used to stamp source.gitlab_url on a freshly

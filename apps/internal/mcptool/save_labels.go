@@ -1,6 +1,6 @@
 package mcptool
 
-import "github.com/rus-lan/bogoslav-analytics/apps/internal/classify"
+import "github.com/rus-lan/bogoslavAnalytics/apps/internal/classify"
 
 // SaveLabelsInput is the save_labels tool's input: the MCP mirror of
 // bogoslav-cli's save-labels command and app.SaveLabelsRequest (TZ.md

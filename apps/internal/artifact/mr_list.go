@@ -3,7 +3,7 @@ package artifact
 import (
 	"fmt"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/domain"
 )
 
 // MRList is artifact-1: the merge requests found by find_mrs, each with

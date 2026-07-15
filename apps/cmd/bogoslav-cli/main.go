@@ -11,7 +11,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/clitree"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/clitree"
 )
 
 func main() {

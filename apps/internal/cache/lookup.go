@@ -26,14 +26,16 @@ type HeaderReader interface {
 	FetchedAt(path string) (time.Time, error)
 }
 
-// Options configures a cache Lookup.
+// Options configures a cache Lookup, and is reused as-is by Get/Put for
+// value entries (value.go): both mechanisms share the same Dir/TTL/
+// Refresh shape, so one config type is enough for both.
 type Options struct {
 	// Dir is the artifact directory to search (the --out directory).
 	Dir string
-	// TTL is how old a cached artifact may be and still count as
-	// fresh. Zero effectively disables the cache, since no artifact is
-	// ever younger than a zero-length TTL. Callers default this to
-	// DefaultTTL.
+	// TTL is how old a cached artifact (or, for Get/Put, a stored
+	// value) may be and still count as fresh. Zero effectively
+	// disables the cache, since nothing is ever younger than a
+	// zero-length TTL. Callers default this to DefaultTTL.
 	TTL time.Duration
 	// Refresh forces a miss without touching the filesystem, per the
 	// --refresh flag (TZ.md section 4.5).

@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/app"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/classify"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/app"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/classify"
 )
 
 // saveLabelsFlags holds the raw --flag values for save-labels before

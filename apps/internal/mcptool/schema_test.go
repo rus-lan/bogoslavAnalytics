@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/jsonschema-go/jsonschema"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/mcptool"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/mcptool"
 )
 
 // TestToolInputSchemas_areDraft2020_12Objects is the acceptance check for

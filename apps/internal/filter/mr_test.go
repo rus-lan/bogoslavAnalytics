@@ -3,8 +3,8 @@ package filter_test
 import (
 	"testing"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/artifact"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/filter"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/artifact"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/filter"
 )
 
 func mrItem(projectID, mrIID int64, commentCount int) artifact.MRItem {

@@ -3,8 +3,8 @@ package mcptool
 import (
 	"github.com/google/jsonschema-go/jsonschema"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/classify"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/classify"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/domain"
 )
 
 // GetClassifyBatchInput is the get_classify_batch tool's input: the MCP

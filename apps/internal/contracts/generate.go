@@ -10,9 +10,9 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"gopkg.in/yaml.v3"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/artifact"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/mcptool"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/artifact"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/domain"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/mcptool"
 )
 
 // OpenAPIVersion is the openapi field value this package emits (TZ.md

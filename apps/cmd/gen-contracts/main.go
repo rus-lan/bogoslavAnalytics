@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/contracts"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/contracts"
 )
 
 func main() {

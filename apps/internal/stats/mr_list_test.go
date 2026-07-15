@@ -3,8 +3,8 @@ package stats_test
 import (
 	"testing"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/artifact"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/stats"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/artifact"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/stats"
 )
 
 func TestFromMRList_countsItemsOnly(t *testing.T) {

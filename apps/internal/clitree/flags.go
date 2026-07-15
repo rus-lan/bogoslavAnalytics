@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/artifact"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/artifact"
 )
 
 // commonOutputFlags are the three flags every command in this tree

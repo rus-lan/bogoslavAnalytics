@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/clitree"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/clitree"
 )
 
 // envNote is printed once per successful MCP config write, since

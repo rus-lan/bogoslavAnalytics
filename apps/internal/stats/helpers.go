@@ -4,7 +4,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/artifact"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/artifact"
 )
 
 // mrKey identifies one merge request for the by_mr breakdown.

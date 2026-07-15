@@ -3,7 +3,7 @@ package clitree_test
 import (
 	"testing"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/clitree"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/clitree"
 )
 
 // TestNewRootCmd_importableFromADifferentPackage proves clitree.NewRootCmd

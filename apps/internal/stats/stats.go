@@ -1,6 +1,6 @@
 package stats
 
-import "github.com/rus-lan/bogoslav-analytics/apps/internal/artifact"
+import "github.com/rus-lan/bogoslavAnalytics/apps/internal/artifact"
 
 // MRCount is one row of a by_mr breakdown: how many rows of the input
 // artifact belong to one merge request (TZ.md section 7.2.1).

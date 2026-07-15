@@ -1,8 +1,8 @@
 package filter
 
 import (
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/artifact"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/artifact"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/domain"
 )
 
 // CommentsByDate keeps only comment_list rows whose CreatedAt falls inside

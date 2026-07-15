@@ -3,7 +3,7 @@ package main
 import (
 	"strconv"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/gitlab"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/gitlab"
 )
 
 // parseNumericID reports whether value is made only of decimal digits,

@@ -9,4 +9,12 @@
 // that lives in artifact/. Where a lookup needs an existing artifact's
 // provenance header, cache defines a small consumer-side interface
 // (HeaderReader) instead of importing artifact/, per TZ.md section 2.4.
+//
+// Beyond artifacts, cache also stores small keyed scalars that are not
+// artifacts at all and carry no schema_version/kind/source header of
+// their own — a resolved username -> numeric id, a smoke-test result
+// (TZ.md sections 5.0, 5.5). Get and Put (value.go) persist and read
+// these back the same way Lookup does for artifacts (same Options, same
+// TTL/Refresh rules), under a reserved file extension (ExtValue) that
+// never collides with an artifact file name.
 package cache

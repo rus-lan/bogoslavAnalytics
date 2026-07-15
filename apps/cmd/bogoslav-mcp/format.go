@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/app"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/artifact"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/app"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/artifact"
 )
 
 // parseFormat validates a tool's format input against the four artifact

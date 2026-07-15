@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/gitlab"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/domain"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/gitlab"
 )
 
 // fakeClient implements FindMRsClient in-memory (TZ.md section 2.4),
@@ -23,6 +23,7 @@ type fakeClient struct {
 	projectMergeRequestsFn       func(ctx context.Context, project gitlab.ID, window gitlab.MergeRequestWindow) ([]gitlab.MergeRequestSummary, error)
 	projectMergeRequestsByIIDsFn func(ctx context.Context, project gitlab.ID, iids []int64) ([]gitlab.MergeRequestSummary, error)
 	smokeTestFn                  func(ctx context.Context, userID int64) (domain.SmokeResult, error)
+	smokeTestCalls               int
 	resolveUserIDFn              func(ctx context.Context, username string) (int64, error)
 	resolveUserIDCalls           int
 }
@@ -84,6 +85,7 @@ func (f *fakeClient) ProjectMergeRequestsByIIDs(ctx context.Context, project git
 }
 
 func (f *fakeClient) SmokeTest(ctx context.Context, userID int64) (domain.SmokeResult, error) {
+	f.smokeTestCalls++
 	if f.smokeTestFn == nil {
 		panic("fakeClient: SmokeTest called but not configured")
 	}

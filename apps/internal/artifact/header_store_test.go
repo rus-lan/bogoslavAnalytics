@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/cache"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/cache"
 )
 
 // var _ cache.HeaderReader = (*HeaderStore)(nil) is the compile-time

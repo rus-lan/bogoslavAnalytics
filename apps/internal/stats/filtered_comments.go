@@ -1,6 +1,6 @@
 package stats
 
-import "github.com/rus-lan/bogoslav-analytics/apps/internal/artifact"
+import "github.com/rus-lan/bogoslavAnalytics/apps/internal/artifact"
 
 // FromFilteredComments aggregates a filtered_comments artifact:
 // TotalItems, ByMR, ByLabel, and ByDate are all filled, identically to

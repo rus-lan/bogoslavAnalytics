@@ -20,4 +20,13 @@
 // object's data until the cached entry ages out. This is bounded by the
 // default 24h TTL (cache.DefaultTTL) and is an accepted risk, not a bug
 // this package works around.
+//
+// A second cache hazard, sharper than the one above: ResolveUserCached
+// (user.go) caches a username's resolved numeric id keyed on
+// {gitlab_url, username}. GitLab usernames can be renamed and the freed
+// name later re-claimed by someone else; a cache entry that survives
+// past that moment answers with the wrong *person*, not just the wrong
+// *selection* the hazard above describes. See ResolveUserCached's doc
+// comment for the full explanation. Bounded by the same TTL, escaped by
+// the same --refresh flag, not fixed here either.
 package app

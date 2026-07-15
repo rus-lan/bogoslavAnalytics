@@ -1,6 +1,6 @@
 package artifact
 
-import "github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
+import "github.com/rus-lan/bogoslavAnalytics/apps/internal/domain"
 
 // MRRef identifies a single merge request by project id and iid. It is
 // used to list merge requests explicitly on a comment_list query

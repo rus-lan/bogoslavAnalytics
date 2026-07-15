@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/domain"
 )
 
 func TestSelectStrategy_rangeOlderThanRetentionSelectsBruteforceWithoutSmoke(t *testing.T) {

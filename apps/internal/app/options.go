@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/artifact"
-	"github.com/rus-lan/bogoslav-analytics/apps/internal/cache"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/artifact"
+	"github.com/rus-lan/bogoslavAnalytics/apps/internal/cache"
 )
 
 // defaultArtifactDir is where artifacts land when a request leaves Dir
