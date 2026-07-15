@@ -51,11 +51,14 @@ func splitDateRange(r domain.DateRange) (left, right domain.DateRange, ok bool) 
 // updated exactly at mid from falling into neither window -- and it is why
 // callers must deduplicate the merged results by (project_id, mr_iid).
 //
-// ok is false when w already spans a single day and so cannot be split
-// further.
+// ok is false when w spans zero or one day, since a one-day window has no
+// date strictly between UpdatedAfter and CreatedBefore: midDate would then
+// return from itself, making b identical to w and looping forever instead
+// of shrinking. Splitting only proceeds when there is a genuine midpoint
+// day, which requires a span of at least two days.
 func splitMergeRequestWindow(w gitlab.MergeRequestWindow) (a, b gitlab.MergeRequestWindow, ok bool) {
 	from, to := w.UpdatedAfter, w.CreatedBefore
-	if !from.Before(to) {
+	if !addDays(from, 1).Before(to) {
 		return gitlab.MergeRequestWindow{}, gitlab.MergeRequestWindow{}, false
 	}
 	mid := midDate(from, to)

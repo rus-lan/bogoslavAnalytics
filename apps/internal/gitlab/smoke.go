@@ -39,7 +39,7 @@ const (
 //     section 5.5.4 -- that fallback decision itself belongs to search/).
 //  5. Otherwise: SmokePassed.
 func (c *Client) SmokeTest(ctx context.Context, userID int64) (domain.SmokeResult, error) {
-	now := c.now()
+	now := c.now().UTC()
 	to := domain.NewDate(now.Year(), now.Month(), now.Day())
 	fromInstant := now.AddDate(0, 0, -smokeWindowDays)
 	from := domain.NewDate(fromInstant.Year(), fromInstant.Month(), fromInstant.Day())

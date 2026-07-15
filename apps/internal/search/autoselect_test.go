@@ -157,6 +157,43 @@ func TestSelectStrategy_smokePassedAndRecentRangeSelectsEvents(t *testing.T) {
 	}
 }
 
+// TestSelectStrategy_retentionCutoffIsComputedInUTC pins opts.now() being
+// converted to UTC before the cutoff's year/month/day are read off it. The
+// injected time sits at 00:30 in a UTC+13 zone, which is still 2026-07-14 in
+// UTC: a local-zone reading of the same instant would see the calendar date
+// rolled over to 2026-07-15 one day early, shifting the retention cutoff by
+// a day and flipping p.Range.From (set exactly on the UTC cutoff date) from
+// "within retention" to "too old".
+func TestSelectStrategy_retentionCutoffIsComputedInUTC(t *testing.T) {
+	farEast := time.FixedZone("UTC+13", 13*60*60)
+	fixedNow := time.Date(2026, time.July, 15, 0, 30, 0, 0, farEast)
+
+	// Exactly on the UTC cutoff date (2026-07-14 UTC minus 3 years):
+	// within retention only if the cutoff is computed from the UTC
+	// calendar date, not the local one.
+	from := domain.NewDate(2023, time.July, 14)
+	to := domain.NewDate(2023, time.December, 31)
+	p := Params{UserID: 42, Range: mustDateRange(from, to), MoreThan: 0}
+	opts := Options{Now: func() time.Time { return fixedNow }}
+
+	client := &fakeClient{
+		smokeTestFn: func(ctx context.Context, userID int64) (domain.SmokeResult, error) {
+			return domain.SmokePassed, nil
+		},
+	}
+
+	strategy, smoke, err := SelectStrategy(context.Background(), client, p, opts)
+	if err != nil {
+		t.Fatalf("SelectStrategy() error = %v", err)
+	}
+	if strategy != domain.StrategyEvents {
+		t.Errorf("SelectStrategy() strategy = %q, want %q (retention cutoff must use the UTC calendar date, not the local one)", strategy, domain.StrategyEvents)
+	}
+	if smoke != domain.SmokePassed {
+		t.Errorf("SelectStrategy() smoke = %q, want %q", smoke, domain.SmokePassed)
+	}
+}
+
 func TestSelectStrategy_customRetentionYearsIsHonored(t *testing.T) {
 	fixedNow := time.Date(2026, time.July, 15, 0, 0, 0, 0, time.UTC)
 	// Only 1 year old: within the default 3-year retention, but outside a

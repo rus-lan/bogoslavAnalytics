@@ -42,7 +42,7 @@ func SelectStrategy(ctx context.Context, client Client, p Params, opts Options) 
 		return domain.StrategyBruteforce, "", nil
 	}
 
-	cutoffInstant := opts.now().AddDate(-opts.retentionYears(), 0, 0)
+	cutoffInstant := opts.now().UTC().AddDate(-opts.retentionYears(), 0, 0)
 	cutoff := domain.NewDate(cutoffInstant.Year(), cutoffInstant.Month(), cutoffInstant.Day())
 	if p.Range.From.Before(cutoff) {
 		return domain.StrategyBruteforce, "", nil

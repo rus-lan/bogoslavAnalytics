@@ -104,8 +104,8 @@ const mrListHTMLTemplate = htmlLayout + `
     <tbody>
     {{range .Items}}
       <tr>
-        <td>{{if .WebURL}}<a href="{{.WebURL}}">{{if .Title}}{{.Title}}{{else}}{{.ProjectPath}}!{{.MRIID}}{{end}}</a>{{else}}{{if .Title}}{{.Title}}{{else}}{{.ProjectPath}}!{{.MRIID}}{{end}}{{end}}</td>
-        <td>{{.ProjectPath}}</td>
+        <td>{{if .WebURL}}<a href="{{.WebURL}}">{{if .Title}}{{.Title}}{{else}}!{{.MRIID}}{{end}}</a>{{else}}{{if .Title}}{{.Title}}{{else}}!{{.MRIID}}{{end}}{{end}}</td>
+        <td>{{if .ProjectPath}}{{.ProjectPath}}{{else}}{{.ProjectID}}{{end}}</td>
         <td>{{.CommentCount}}</td>
         <td>{{fmtTime .CreatedAt}}</td>
         <td>{{fmtTime .UpdatedAt}}</td>

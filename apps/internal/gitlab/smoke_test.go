@@ -235,6 +235,53 @@ func TestClient_SmokeTest_samplesAtMostFiveCandidates(t *testing.T) {
 	}
 }
 
+// TestClient_SmokeTest_windowUsesUTCNotLocalNow pins c.now to an instant
+// that has already rolled over to the next calendar day in a zone east of
+// UTC, but is still the previous day in UTC. If the smoke window were built
+// from the local year/month/day instead of the UTC one, the "before" query
+// bound sent to the events endpoint would be shifted a day later than the
+// correct UTC-derived window.
+func TestClient_SmokeTest_windowUsesUTCNotLocalNow(t *testing.T) {
+	east := time.FixedZone("UTC+14", 14*60*60)
+	// 2026-07-15T00:30:00+14:00 is 2026-07-14T10:30:00Z: the local calendar
+	// day is already the 15th, but the UTC calendar day is still the 14th.
+	fixedNow := time.Date(2026, time.July, 15, 0, 30, 0, 0, east)
+
+	var gotBefore, gotAfter string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v4/users/42/events" {
+			if r.URL.Query().Get("page") == "1" {
+				gotBefore = r.URL.Query().Get("before")
+				gotAfter = r.URL.Query().Get("after")
+			}
+			writeJSON(t, w, []CommentEvent{})
+			return
+		}
+		t.Fatalf("unexpected request path: %s", r.URL.Path)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "token")
+	c.now = func() time.Time { return fixedNow }
+
+	if _, err := c.SmokeTest(t.Context(), 42); err != nil {
+		t.Fatalf("SmokeTest() error = %v", err)
+	}
+
+	// Correct (UTC-derived) window: to = 2026-07-14, so before = to+1 day.
+	wantBefore := "2026-07-15"
+	// If the bug were present, "to" would be 2026-07-15 (the local day) and
+	// before would come out as 2026-07-16 instead.
+	if gotBefore != wantBefore {
+		t.Errorf("events request before = %q, want %q (window must use UTC calendar day, not local)", gotBefore, wantBefore)
+	}
+	wantAfter := domain.NewDate(2026, time.July, 14).
+		Start().AddDate(0, 0, -smokeWindowDays-1).Format("2006-01-02")
+	if gotAfter != wantAfter {
+		t.Errorf("events request after = %q, want %q", gotAfter, wantAfter)
+	}
+}
+
 func TestMRCandidatesFromEvents_ignoresNonMergeRequestAndSystemEvents(t *testing.T) {
 	createdAt := time.Now()
 	events := []CommentEvent{
