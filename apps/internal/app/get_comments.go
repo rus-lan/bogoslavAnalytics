@@ -133,7 +133,7 @@ func GetComments(ctx context.Context, client DiscussionsClient, req GetCommentsR
 		Header: artifact.Header{
 			SchemaVersion: artifact.CurrentSchemaVersion,
 			Kind:          artifact.KindCommentList,
-			Source:        artifact.Source{GitlabURL: req.GitlabURL, FetchedAt: now()},
+			Source:        artifact.Source{GitlabURL: req.GitlabURL, FetchedAt: now().UTC()},
 		},
 		Query: query,
 		Items: items,

@@ -107,6 +107,46 @@ func TestGetComments_explicitMRList(t *testing.T) {
 	}
 }
 
+// TestGetComments_fetchedAtIsAlwaysUTC is the regression guard for TZ.md
+// section 4.1's fetched_at contract (a "Z" instant, not a local offset):
+// even when req.Now returns a non-UTC clock reading, the written
+// artifact's Source.FetchedAt must carry UTC. This fails if the .UTC()
+// call at the Source{} site is reverted.
+func TestGetComments_fetchedAtIsAlwaysUTC(t *testing.T) {
+	dir := t.TempDir()
+	loc := time.FixedZone("MSK", 3*60*60)
+	now := time.Date(2026, time.July, 15, 23, 14, 35, 0, loc)
+	at := time.Date(2026, time.March, 10, 12, 0, 0, 0, time.UTC)
+
+	client := &fakeDiscussionsClient{
+		discussionsFn: func(ctx context.Context, project gitlab.ID, mrIID int64) ([]domain.Discussion, error) {
+			return []domain.Discussion{discussion("d", note(1, 42, false, at))}, nil
+		},
+	}
+	req := GetCommentsRequest{
+		GitlabURL: "https://gitlab.example.com",
+		UserID:    42,
+		From:      domain.NewDate(2026, time.January, 1),
+		To:        domain.NewDate(2026, time.June, 30),
+		MRs:       []artifact.MRRef{{ProjectID: 1, MRIID: 7}},
+		Dir:       dir,
+		Now:       func() time.Time { return now },
+	}
+
+	result, err := GetComments(context.Background(), client, req)
+	if err != nil {
+		t.Fatalf("GetComments() error = %v", err)
+	}
+
+	fetchedAt := result.Doc.Header.Source.FetchedAt
+	if fetchedAt.Location() != time.UTC {
+		t.Errorf("FetchedAt.Location() = %v, want time.UTC", fetchedAt.Location())
+	}
+	if !fetchedAt.Equal(now) {
+		t.Errorf("FetchedAt = %v, want the same instant as %v", fetchedAt, now)
+	}
+}
+
 func TestGetComments_noInputIsError(t *testing.T) {
 	_, err := GetComments(context.Background(), &fakeDiscussionsClient{}, GetCommentsRequest{
 		UserID: 42,

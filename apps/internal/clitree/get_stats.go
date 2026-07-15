@@ -56,7 +56,7 @@ func registerGetStatsFlags(cmd *cobra.Command, flags *getStatsFlags) {
 	fs.StringVar(&flags.fromArtifact, "from-artifact", "", "path to the artifact to aggregate (required)")
 	_ = cmd.MarkFlagRequired("from-artifact")
 
-	addCommonOutputFlags(cmd, &flags.out)
+	addCommonOutputFlags(cmd, &flags.out, formatJSONYAMLOnly, dirStatsOnly)
 }
 
 // newGetStatsRequest converts flags into an app.GetStatsRequest.

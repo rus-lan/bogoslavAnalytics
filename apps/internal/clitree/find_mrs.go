@@ -79,7 +79,7 @@ func registerFindMRsFlags(cmd *cobra.Command, flags *findMRsFlags) {
 	_ = cmd.MarkFlagRequired("from")
 	_ = cmd.MarkFlagRequired("to")
 
-	addCommonOutputFlags(cmd, &flags.out)
+	addCommonOutputFlags(cmd, &flags.out, formatFourKinds, dirCachedRefresh)
 	addCacheFlags(cmd, &flags.cache)
 }
 

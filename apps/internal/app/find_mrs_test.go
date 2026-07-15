@@ -71,6 +71,53 @@ func TestFindMRs_cacheHitSkipsSearchAndNumericUserMakesNoResolveCalls(t *testing
 	}
 }
 
+// TestFindMRs_fetchedAtIsAlwaysUTC is the regression guard for TZ.md
+// section 4.1's fetched_at contract (a "Z" instant, not a local offset):
+// even when req.Now returns a non-UTC clock reading, the written
+// artifact's Source.FetchedAt must carry UTC. This fails if the .UTC()
+// call at the Source{} site is reverted.
+func TestFindMRs_fetchedAtIsAlwaysUTC(t *testing.T) {
+	dir := t.TempDir()
+	loc := time.FixedZone("MSK", 3*60*60)
+	now := time.Date(2026, time.July, 15, 23, 14, 35, 0, loc)
+	at := time.Date(2026, time.March, 10, 12, 0, 0, 0, time.UTC)
+
+	req := FindMRsRequest{
+		GitlabURL: "https://gitlab.example.com",
+		User:      "42",
+		From:      domain.NewDate(2026, time.January, 1),
+		To:        domain.NewDate(2026, time.June, 30),
+		MoreThan:  3,
+		Strict:    true,
+		Dir:       dir,
+		Now:       func() time.Time { return now },
+	}
+
+	client := &fakeClient{
+		mergeRequestsFn: func(ctx context.Context, w gitlab.MergeRequestWindow) ([]gitlab.MergeRequestSummary, error) {
+			return []gitlab.MergeRequestSummary{
+				{MergeRequest: domain.MergeRequest{ProjectID: 1, IID: 7, CreatedAt: at, UpdatedAt: at}, UserNotesCount: 10},
+			}, nil
+		},
+		discussionsFn: func(ctx context.Context, project gitlab.ID, mrIID int64) ([]domain.Discussion, error) {
+			return notesFrom(42, 4, at), nil
+		},
+	}
+
+	result, err := FindMRs(context.Background(), client, req)
+	if err != nil {
+		t.Fatalf("FindMRs() error = %v", err)
+	}
+
+	fetchedAt := result.Doc.Header.Source.FetchedAt
+	if fetchedAt.Location() != time.UTC {
+		t.Errorf("FetchedAt.Location() = %v, want time.UTC", fetchedAt.Location())
+	}
+	if !fetchedAt.Equal(now) {
+		t.Errorf("FetchedAt = %v, want the same instant as %v", fetchedAt, now)
+	}
+}
+
 func TestFindMRs_refreshForcesMiss(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Date(2026, time.July, 15, 12, 0, 0, 0, time.UTC)

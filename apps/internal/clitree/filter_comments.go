@@ -75,7 +75,7 @@ func registerFilterCommentsFlags(cmd *cobra.Command, flags *filterCommentsFlags)
 	fs.StringVar(&flags.project, "project", "", "keep only comments on merge requests in this single project (numeric id or path)")
 	_ = cmd.MarkFlagRequired("from-artifact")
 
-	addCommonOutputFlags(cmd, &flags.out)
+	addCommonOutputFlags(cmd, &flags.out, formatFourKinds, dirNoCache)
 }
 
 // resolveFilterScope resolves --group/--project into the numeric ids

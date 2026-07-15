@@ -76,7 +76,14 @@ func FilterComments(req FilterCommentsRequest) (FilterCommentsResult, error) {
 	if req.ProjectID != nil {
 		items = filter.ByProject(items, *req.ProjectID)
 	}
-	if len(req.ProjectIDs) > 0 {
+	// Guard on req.Group (whether a group was requested at all), not on
+	// len(req.ProjectIDs): a group that resolves to zero projects -- or
+	// one whose projects the caller's token cannot see -- has ProjectIDs
+	// == [], and a length guard would then skip ByGroup entirely, keeping
+	// every item instead of none. req.Group is set unconditionally by
+	// both the CLI and MCP callers whenever --group/group was named, so
+	// it is the actual "was a group requested" signal.
+	if req.Group != "" {
 		items = filter.ByGroup(items, req.ProjectIDs)
 	}
 

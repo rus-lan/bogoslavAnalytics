@@ -72,7 +72,7 @@ func registerSaveLabelsFlags(cmd *cobra.Command, flags *saveLabelsFlags) {
 	_ = cmd.MarkFlagRequired("tool")
 	_ = cmd.MarkFlagRequired("model")
 
-	addCommonOutputFlags(cmd, &flags.out)
+	addCommonOutputFlags(cmd, &flags.out, formatFourKinds, dirNoCache)
 }
 
 // newSaveLabelsRequest converts flags, an already-read labeling result

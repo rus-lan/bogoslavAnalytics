@@ -84,7 +84,7 @@ func registerGetClassifyBatchFlags(cmd *cobra.Command, flags *getClassifyBatchFl
 	_ = cmd.MarkFlagRequired("from-artifact")
 	_ = cmd.MarkFlagRequired("model")
 
-	addCommonOutputFlags(cmd, &flags.out)
+	addCommonOutputFlags(cmd, &flags.out, formatJSONYAMLOnly, dirCachedNoRefresh)
 }
 
 // newGetClassifyBatchRequest converts flags into an

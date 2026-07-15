@@ -140,7 +140,7 @@ func FindMRs(ctx context.Context, client FindMRsClient, req FindMRsRequest) (Fin
 	header := artifact.Header{
 		SchemaVersion: artifact.CurrentSchemaVersion,
 		Kind:          artifact.KindMRList,
-		Source:        artifact.Source{GitlabURL: req.GitlabURL, FetchedAt: now()},
+		Source:        artifact.Source{GitlabURL: req.GitlabURL, FetchedAt: now().UTC()},
 	}
 	doc := toMRList(header, query, result)
 	doc.Items = filter.MRsByCount(doc.Items, req.MoreThan)

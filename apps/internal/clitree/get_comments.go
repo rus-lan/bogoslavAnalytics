@@ -74,7 +74,7 @@ func registerGetCommentsFlags(cmd *cobra.Command, flags *getCommentsFlags) {
 	_ = cmd.MarkFlagRequired("from")
 	_ = cmd.MarkFlagRequired("to")
 
-	addCommonOutputFlags(cmd, &flags.out)
+	addCommonOutputFlags(cmd, &flags.out, formatFourKinds, dirCachedRefresh)
 	addCacheFlags(cmd, &flags.cache)
 }
 
