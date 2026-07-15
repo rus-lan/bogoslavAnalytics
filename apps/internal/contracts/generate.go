@@ -11,6 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/rus-lan/bogoslav-analytics/apps/internal/artifact"
+	"github.com/rus-lan/bogoslav-analytics/apps/internal/domain"
 	"github.com/rus-lan/bogoslav-analytics/apps/internal/mcptool"
 )
 
@@ -35,37 +36,101 @@ const infoDescription = "" +
 	"GitLab review-activity analytics (bogoslavAnalytics). This document ships no REST API: " +
 	"access is CLI and MCP-over-stdio only, so paths is intentionally empty (TZ.md section 13). " +
 	"Every schema under components/schemas is generated at build time by " +
-	"apps/internal/contracts, via jsonschema.ForType on the same Go types " +
-	"apps/cmd/bogoslav-mcp's mcp.AddTool calls use to infer each tool's inputSchema by " +
-	"reflection -- one generation, two consumers, never a hand-typed duplicate (TZ.md section 10). " +
+	"apps/internal/contracts, via jsonschema.ForType. The six tool input types and five tool " +
+	"output types use the exact bare options value (no overrides) " +
+	"apps/cmd/bogoslav-mcp's mcp.AddTool calls use to infer each tool's inputSchema/outputSchema " +
+	"by reflection -- one generation, two consumers, never a hand-typed duplicate (TZ.md section 10). " +
 	"Included: the six MCP tool input types (find_mrs, get_comments, get_classify_batch, " +
-	"save_labels, filter_comments, get_stats) and the four artifact document types (mr_list, " +
-	"comment_list, labeled_comments, filtered_comments). Left out, honestly rather than faked: " +
-	"get_classify_batch's output schema, because its Go type embeds *jsonschema.Schema, which is " +
-	"self-referential and jsonschema.ForType cannot resolve (the same reason that tool is " +
-	"registered with mcp.AddTool's Out type parameter as \"any\", not that type); and the other " +
-	"five tools' output types, which live in package main of apps/cmd/bogoslav-mcp and so cannot " +
-	"be imported by any generator, by any other package, at all -- a Go language rule, not an " +
-	"oversight."
+	"save_labels, filter_comments, get_stats), five of the six tools' output types " +
+	"(FindMRsOutput, GetCommentsOutput, SaveLabelsOutput, FilterCommentsOutput, GetStatsOutput), " +
+	"and the four artifact document types (mr_list, comment_list, labeled_comments, " +
+	"filtered_comments). The four artifact schemas add one override on top of those same " +
+	"defaults: domain.Date -- whose only exported surface is a MarshalJSON method, invisible to " +
+	"jsonschema.ForType's field reflection, since every field is unexported -- renders as " +
+	"{type: string, format: date} instead of an empty object, matching its actual \"YYYY-MM-DD\" " +
+	"wire form. This override touches only the four artifact schemas: domain.Date never appears " +
+	"in any tool input or output type, so mcp.AddTool's own inference is untouched and cannot " +
+	"diverge from it (see doc.go). Left out, honestly rather than faked: get_classify_batch's " +
+	"output schema, because its Go type embeds *jsonschema.Schema, which is self-referential and " +
+	"jsonschema.ForType cannot resolve (the same reason that tool is registered with " +
+	"mcp.AddTool's Out type parameter as \"any\", not that type)."
+
+// toolForOptions is the exact bare options value apps/cmd/bogoslav-mcp's
+// mcp.AddTool calls use when it infers a tool's input or output schema
+// by reflection (setSchema -> jsonschema.ForType(rt,
+// &jsonschema.ForOptions{}), see github.com/modelcontextprotocol/go-sdk
+// v1.6.1's mcp/server.go). Every one of this package's six tool input
+// and five tool output schemas is generated with this SAME value, never
+// a fresh literal, so the two "one generation, two consumers" call
+// sites can never quietly diverge (TZ.md section 10; see doc.go).
+var toolForOptions = &jsonschema.ForOptions{}
+
+// dateSchema is the schema domain.Date actually renders to on the wire:
+// a plain "YYYY-MM-DD" string (domain.Date.MarshalJSON, domain/date.go).
+// Format "date" is JSON Schema draft 2020-12's own standard format value
+// for a full-date string (2020-12 Validation spec, section 7.3.1) -- the
+// same draft this whole document targets -- not an invented value.
+var dateSchema = &jsonschema.Schema{Type: "string", Format: "date"}
+
+// artifactForOptions is the options value used for the four artifact
+// document schemas only (TZ.md section 4). It adds exactly one entry on
+// top of toolForOptions's same (empty) defaults: domain.Date, whose only
+// exported surface is a MarshalJSON method, is invisible to
+// jsonschema.ForType's field reflection (every field is unexported), so
+// without this override it renders as an empty `type: object` -- a
+// direct lie about the "YYYY-MM-DD" string domain.Date actually
+// marshals to (see doc.go).
+//
+// This override is safe to scope to the artifact schemas alone, and
+// only them: domain.Date never appears in any of the six tool input
+// types or five tool output types this package also generates (verified
+// by reading every one of mcptool's *Input and *Output types -- every
+// from/to-shaped field there is a plain wire string, parsed into a
+// domain.Date only inside apps/cmd/bogoslav-mcp's request-mapping
+// functions, after mcp.AddTool's own schema inference has already run).
+// Since domain.Date is unreachable from any type mcp.AddTool reflects
+// on, there is no AddTool-inferred schema this override could ever
+// diverge from -- for any tool, this override changes nothing.
+var artifactForOptions = &jsonschema.ForOptions{
+	TypeSchemas: map[reflect.Type]*jsonschema.Schema{
+		reflect.TypeFor[domain.Date](): dateSchema,
+	},
+}
 
 // schemaEntry names one Go type this package emits a components/schemas
-// entry for. Name becomes the schema's key; it is derived from the Go
-// type itself (reflect.Type.Name()), not typed out twice, so the two
-// can never quietly drift apart.
+// entry for, and the ForOptions value used to generate it. Name becomes
+// the schema's key; it is derived from the Go type itself
+// (reflect.Type.Name()), not typed out twice, so the two can never
+// quietly drift apart.
 type schemaEntry struct {
 	Name string
 	Type reflect.Type
+	Opts *jsonschema.ForOptions
 }
 
+// newSchemaEntry builds a tool input or output schema entry: always
+// generated with toolForOptions, the same bare value mcp.AddTool uses,
+// so these schemas can never diverge from what the running MCP server
+// actually advertises.
 func newSchemaEntry(t reflect.Type) schemaEntry {
-	return schemaEntry{Name: t.Name(), Type: t}
+	return schemaEntry{Name: t.Name(), Type: t, Opts: toolForOptions}
+}
+
+// newArtifactSchemaEntry builds one of the four artifact document
+// schema entries, generated with artifactForOptions (TZ.md section 4):
+// these are the only entries where domain.Date renders as a string, not
+// an empty object.
+func newArtifactSchemaEntry(t reflect.Type) schemaEntry {
+	return schemaEntry{Name: t.Name(), Type: t, Opts: artifactForOptions}
 }
 
 // schemaEntries lists every Go type this package emits a schema for:
-// the six MCP tool input types (TZ.md section 7.2) and the four
-// artifact document types (TZ.md section 4). Order here only decides
-// the order errors are reported in -- the emitted document's
-// components/schemas keys are sorted independently (see Generate).
+// the six MCP tool input types, five of the six tools' output types
+// (TZ.md section 7.2 -- get_classify_batch's output is the one
+// documented exception, see doc.go) and the four artifact document
+// types (TZ.md section 4). Order here only decides the order errors are
+// reported in -- the emitted document's components/schemas keys are
+// sorted independently (see Generate).
 func schemaEntries() []schemaEntry {
 	return []schemaEntry{
 		newSchemaEntry(reflect.TypeFor[mcptool.FindMRsInput]()),
@@ -74,10 +139,15 @@ func schemaEntries() []schemaEntry {
 		newSchemaEntry(reflect.TypeFor[mcptool.SaveLabelsInput]()),
 		newSchemaEntry(reflect.TypeFor[mcptool.FilterCommentsInput]()),
 		newSchemaEntry(reflect.TypeFor[mcptool.GetStatsInput]()),
-		newSchemaEntry(reflect.TypeFor[artifact.MRList]()),
-		newSchemaEntry(reflect.TypeFor[artifact.CommentList]()),
-		newSchemaEntry(reflect.TypeFor[artifact.LabeledComments]()),
-		newSchemaEntry(reflect.TypeFor[artifact.FilteredComments]()),
+		newSchemaEntry(reflect.TypeFor[mcptool.FindMRsOutput]()),
+		newSchemaEntry(reflect.TypeFor[mcptool.GetCommentsOutput]()),
+		newSchemaEntry(reflect.TypeFor[mcptool.SaveLabelsOutput]()),
+		newSchemaEntry(reflect.TypeFor[mcptool.FilterCommentsOutput]()),
+		newSchemaEntry(reflect.TypeFor[mcptool.GetStatsOutput]()),
+		newArtifactSchemaEntry(reflect.TypeFor[artifact.MRList]()),
+		newArtifactSchemaEntry(reflect.TypeFor[artifact.CommentList]()),
+		newArtifactSchemaEntry(reflect.TypeFor[artifact.LabeledComments]()),
+		newArtifactSchemaEntry(reflect.TypeFor[artifact.FilteredComments]()),
 	}
 }
 
@@ -133,7 +203,7 @@ func Generate() ([]byte, error) {
 	schemas := make(map[string]*yaml.Node, len(names))
 	for _, name := range names {
 		e := byName[name]
-		s, err := jsonschema.ForType(e.Type, &jsonschema.ForOptions{})
+		s, err := jsonschema.ForType(e.Type, e.Opts)
 		if err != nil {
 			return nil, fmt.Errorf("contracts: schema for %s (%s): %w", e.Name, e.Type, err)
 		}
@@ -178,7 +248,7 @@ func Generate() ([]byte, error) {
 // omitting a schema that may have become inferable, or masking an
 // unrelated new failure as if it were the known one.
 func checkGetClassifyBatchOutputCycle() error {
-	_, err := jsonschema.ForType(reflect.TypeFor[mcptool.GetClassifyBatchOutput](), &jsonschema.ForOptions{})
+	_, err := jsonschema.ForType(reflect.TypeFor[mcptool.GetClassifyBatchOutput](), toolForOptions)
 	if err == nil {
 		return fmt.Errorf("contracts: jsonschema.ForType(GetClassifyBatchOutput) unexpectedly " +
 			"succeeded; the self-reference cycle documented in doc.go seems to be gone -- " +

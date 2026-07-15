@@ -11,12 +11,6 @@ import (
 	"github.com/rus-lan/bogoslav-analytics/apps/internal/mcptool"
 )
 
-// SaveLabelsOutput is the save_labels tool's output.
-type SaveLabelsOutput struct {
-	Path  string `json:"path" jsonschema:"path to the written labeled_comments artifact"`
-	Count int    `json:"count" jsonschema:"number of labeled comments written"`
-}
-
 // newSaveLabelsRequest converts in, and a resolved classifiedAt
 // timestamp, into an app.SaveLabelsRequest.
 func newSaveLabelsRequest(in mcptool.SaveLabelsInput) (app.SaveLabelsRequest, error) {
@@ -51,16 +45,16 @@ func newSaveLabelsRequest(in mcptool.SaveLabelsInput) (app.SaveLabelsRequest, er
 // classify.Validate returns the error and writes nothing: app.SaveLabels
 // never reaches artifact.WriteLabeledComments on that path (TZ.md
 // section 8.1).
-func (s *toolServer) saveLabels(_ context.Context, _ *mcp.CallToolRequest, in mcptool.SaveLabelsInput) (*mcp.CallToolResult, SaveLabelsOutput, error) {
+func (s *toolServer) saveLabels(_ context.Context, _ *mcp.CallToolRequest, in mcptool.SaveLabelsInput) (*mcp.CallToolResult, mcptool.SaveLabelsOutput, error) {
 	req, err := newSaveLabelsRequest(in)
 	if err != nil {
-		return nil, SaveLabelsOutput{}, err
+		return nil, mcptool.SaveLabelsOutput{}, err
 	}
 
 	result, err := app.SaveLabels(req)
 	if err != nil {
-		return nil, SaveLabelsOutput{}, fmt.Errorf("save_labels: %w", err)
+		return nil, mcptool.SaveLabelsOutput{}, fmt.Errorf("save_labels: %w", err)
 	}
 
-	return nil, SaveLabelsOutput{Path: result.Path, Count: len(result.Doc.Items)}, nil
+	return nil, mcptool.SaveLabelsOutput{Path: result.Path, Count: len(result.Doc.Items)}, nil
 }

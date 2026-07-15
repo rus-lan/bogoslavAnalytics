@@ -20,3 +20,12 @@ type FindMRsInput struct {
 	Refresh         bool   `json:"refresh,omitempty" jsonschema:"bypass the cache and always call GitLab, even if a fresh cached mr_list artifact already exists"`
 	CacheTTLSeconds int64  `json:"cache_ttl_seconds,omitempty" jsonschema:"how long, in seconds, a cached mr_list artifact stays fresh before this tool calls GitLab again (default 86400, 24h)"`
 }
+
+// FindMRsOutput is the find_mrs tool's output.
+type FindMRsOutput struct {
+	Path     string `json:"path" jsonschema:"path to the written (or, on a cache hit, already-existing) mr_list artifact"`
+	CacheHit bool   `json:"cache_hit" jsonschema:"true when this result came from an existing artifact without calling GitLab"`
+	Count    int    `json:"count" jsonschema:"number of merge requests in the result"`
+	Strategy string `json:"strategy" jsonschema:"which candidate search strategy actually ran, events or bruteforce; empty in point mode, where no candidate search runs at all"`
+	Smoke    string `json:"smoke" jsonschema:"result of the DiscussionNote smoke test that gated the strategy choice: passed, failed, or unknown; empty in point mode"`
+}

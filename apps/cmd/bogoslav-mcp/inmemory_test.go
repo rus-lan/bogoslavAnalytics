@@ -8,6 +8,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/rus-lan/bogoslav-analytics/apps/internal/gitlab"
+	"github.com/rus-lan/bogoslav-analytics/apps/internal/mcptool"
 )
 
 // TestSaveLabels_endToEndOverInMemoryTransport is an end-to-end check
@@ -60,7 +61,7 @@ func TestSaveLabels_endToEndOverInMemoryTransport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal StructuredContent error = %v", err)
 	}
-	var out SaveLabelsOutput
+	var out mcptool.SaveLabelsOutput
 	if err := json.Unmarshal(raw, &out); err != nil {
 		t.Fatalf("unmarshal StructuredContent error = %v", err)
 	}

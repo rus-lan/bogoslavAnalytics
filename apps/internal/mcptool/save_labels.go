@@ -19,3 +19,9 @@ type SaveLabelsInput struct {
 	ArtifactsDir string `json:"artifacts_dir,omitempty" jsonschema:"directory the labeled_comments artifact is written under (default \"artifacts\")"`
 	Format       string `json:"format,omitempty" jsonschema:"artifact wire format: json, yaml, text, or html (default yaml). A labeling result that fails validation -- a label outside the taxonomy, an extra, missing, or duplicate note_id -- writes NO file, in any of the four formats, and returns an error listing every violation"`
 }
+
+// SaveLabelsOutput is the save_labels tool's output.
+type SaveLabelsOutput struct {
+	Path  string `json:"path" jsonschema:"path to the written labeled_comments artifact"`
+	Count int    `json:"count" jsonschema:"number of labeled comments written"`
+}

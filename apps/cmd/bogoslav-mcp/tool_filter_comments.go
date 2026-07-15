@@ -11,12 +11,6 @@ import (
 	"github.com/rus-lan/bogoslav-analytics/apps/internal/mcptool"
 )
 
-// FilterCommentsOutput is the filter_comments tool's output.
-type FilterCommentsOutput struct {
-	Path  string `json:"path" jsonschema:"path to the written filtered_comments artifact"`
-	Count int    `json:"count" jsonschema:"number of comments kept after filtering"`
-}
-
 // newFilterCommentsRequest converts in and already-resolved group/
 // project scope into an app.FilterCommentsRequest. It makes no GitLab
 // call itself: resolveFilterScope is filterComments's job, so this
@@ -44,10 +38,10 @@ func newFilterCommentsRequest(in mcptool.FilterCommentsInput, from, to *domain.D
 // filterComments is the filter_comments tool handler: resolve group/
 // project (when set), build the request, and call app.FilterComments
 // (TZ.md section 7.3: one function of apps/internal/app per tool).
-func (s *toolServer) filterComments(ctx context.Context, _ *mcp.CallToolRequest, in mcptool.FilterCommentsInput) (*mcp.CallToolResult, FilterCommentsOutput, error) {
+func (s *toolServer) filterComments(ctx context.Context, _ *mcp.CallToolRequest, in mcptool.FilterCommentsInput) (*mcp.CallToolResult, mcptool.FilterCommentsOutput, error) {
 	from, to, err := parseOptionalDateRange(in.From, in.To)
 	if err != nil {
-		return nil, FilterCommentsOutput{}, err
+		return nil, mcptool.FilterCommentsOutput{}, err
 	}
 
 	var projectIDs []int64
@@ -55,19 +49,19 @@ func (s *toolServer) filterComments(ctx context.Context, _ *mcp.CallToolRequest,
 	if in.Group != "" || in.Project != "" {
 		projectIDs, projectID, err = resolveFilterScope(ctx, s.client, in.Group, in.Project)
 		if err != nil {
-			return nil, FilterCommentsOutput{}, fmt.Errorf("filter_comments: %w", err)
+			return nil, mcptool.FilterCommentsOutput{}, fmt.Errorf("filter_comments: %w", err)
 		}
 	}
 
 	req, err := newFilterCommentsRequest(in, from, to, projectIDs, projectID)
 	if err != nil {
-		return nil, FilterCommentsOutput{}, err
+		return nil, mcptool.FilterCommentsOutput{}, err
 	}
 
 	result, err := app.FilterComments(req)
 	if err != nil {
-		return nil, FilterCommentsOutput{}, fmt.Errorf("filter_comments: %w", err)
+		return nil, mcptool.FilterCommentsOutput{}, fmt.Errorf("filter_comments: %w", err)
 	}
 
-	return nil, FilterCommentsOutput{Path: result.Path, Count: len(result.Doc.Items)}, nil
+	return nil, mcptool.FilterCommentsOutput{Path: result.Path, Count: len(result.Doc.Items)}, nil
 }

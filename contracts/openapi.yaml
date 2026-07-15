@@ -4,7 +4,7 @@ openapi: 3.1.0
 info:
     title: bogoslavAnalytics
     version: 1.0.0
-    description: 'GitLab review-activity analytics (bogoslavAnalytics). This document ships no REST API: access is CLI and MCP-over-stdio only, so paths is intentionally empty (TZ.md section 13). Every schema under components/schemas is generated at build time by apps/internal/contracts, via jsonschema.ForType on the same Go types apps/cmd/bogoslav-mcp''s mcp.AddTool calls use to infer each tool''s inputSchema by reflection -- one generation, two consumers, never a hand-typed duplicate (TZ.md section 10). Included: the six MCP tool input types (find_mrs, get_comments, get_classify_batch, save_labels, filter_comments, get_stats) and the four artifact document types (mr_list, comment_list, labeled_comments, filtered_comments). Left out, honestly rather than faked: get_classify_batch''s output schema, because its Go type embeds *jsonschema.Schema, which is self-referential and jsonschema.ForType cannot resolve (the same reason that tool is registered with mcp.AddTool''s Out type parameter as "any", not that type); and the other five tools'' output types, which live in package main of apps/cmd/bogoslav-mcp and so cannot be imported by any generator, by any other package, at all -- a Go language rule, not an oversight.'
+    description: 'GitLab review-activity analytics (bogoslavAnalytics). This document ships no REST API: access is CLI and MCP-over-stdio only, so paths is intentionally empty (TZ.md section 13). Every schema under components/schemas is generated at build time by apps/internal/contracts, via jsonschema.ForType. The six tool input types and five tool output types use the exact bare options value (no overrides) apps/cmd/bogoslav-mcp''s mcp.AddTool calls use to infer each tool''s inputSchema/outputSchema by reflection -- one generation, two consumers, never a hand-typed duplicate (TZ.md section 10). Included: the six MCP tool input types (find_mrs, get_comments, get_classify_batch, save_labels, filter_comments, get_stats), five of the six tools'' output types (FindMRsOutput, GetCommentsOutput, SaveLabelsOutput, FilterCommentsOutput, GetStatsOutput), and the four artifact document types (mr_list, comment_list, labeled_comments, filtered_comments). The four artifact schemas add one override on top of those same defaults: domain.Date -- whose only exported surface is a MarshalJSON method, invisible to jsonschema.ForType''s field reflection, since every field is unexported -- renders as {type: string, format: date} instead of an empty object, matching its actual "YYYY-MM-DD" wire form. This override touches only the four artifact schemas: domain.Date never appears in any tool input or output type, so mcp.AddTool''s own inference is untouched and cannot diverge from it (see doc.go). Left out, honestly rather than faked: get_classify_batch''s output schema, because its Go type embeds *jsonschema.Schema, which is self-referential and jsonschema.ForType cannot resolve (the same reason that tool is registered with mcp.AddTool''s Out type parameter as "any", not that type).'
 paths: {}
 components:
     schemas:
@@ -32,13 +32,11 @@ components:
                         user_id:
                             type: integer
                         from:
-                            type: object
-                            properties: {}
-                            additionalProperties: false
+                            type: string
+                            format: date
                         to:
-                            type: object
-                            properties: {}
-                            additionalProperties: false
+                            type: string
+                            format: date
                         mrs:
                             type:
                                 - "null"
@@ -206,6 +204,19 @@ components:
                 - from_artifact
                 - labels
             additionalProperties: false
+        FilterCommentsOutput:
+            type: object
+            properties:
+                path:
+                    type: string
+                    description: path to the written filtered_comments artifact
+                count:
+                    type: integer
+                    description: number of comments kept after filtering
+            required:
+                - path
+                - count
+            additionalProperties: false
         FilteredComments:
             type: object
             properties:
@@ -238,15 +249,13 @@ components:
                         from:
                             type:
                                 - "null"
-                                - object
-                            properties: {}
-                            additionalProperties: false
+                                - string
+                            format: date
                         to:
                             type:
                                 - "null"
-                                - object
-                            properties: {}
-                            additionalProperties: false
+                                - string
+                            format: date
                         group:
                             type: string
                         project:
@@ -413,6 +422,31 @@ components:
                 - to
                 - more_than
             additionalProperties: false
+        FindMRsOutput:
+            type: object
+            properties:
+                path:
+                    type: string
+                    description: path to the written (or, on a cache hit, already-existing) mr_list artifact
+                cache_hit:
+                    type: boolean
+                    description: true when this result came from an existing artifact without calling GitLab
+                count:
+                    type: integer
+                    description: number of merge requests in the result
+                strategy:
+                    type: string
+                    description: which candidate search strategy actually ran, events or bruteforce; empty in point mode, where no candidate search runs at all
+                smoke:
+                    type: string
+                    description: 'result of the DiscussionNote smoke test that gated the strategy choice: passed, failed, or unknown; empty in point mode'
+            required:
+                - path
+                - cache_hit
+                - count
+                - strategy
+                - smoke
+            additionalProperties: false
         GetClassifyBatchInput:
             type: object
             properties:
@@ -495,6 +529,23 @@ components:
                 - from
                 - to
             additionalProperties: false
+        GetCommentsOutput:
+            type: object
+            properties:
+                path:
+                    type: string
+                    description: path to the written (or, on a cache hit, already-existing) comment_list artifact
+                cache_hit:
+                    type: boolean
+                    description: true when this result came from an existing artifact without calling GitLab
+                count:
+                    type: integer
+                    description: number of comments in the result
+            required:
+                - path
+                - cache_hit
+                - count
+            additionalProperties: false
         GetStatsInput:
             type: object
             properties:
@@ -509,6 +560,53 @@ components:
                     description: 'output format for the written stats file when artifacts_dir is set: json or yaml only (default yaml); stats is not one of the four artifact kinds and has no text or html rendering of its own'
             required:
                 - artifact_path
+            additionalProperties: false
+        GetStatsOutput:
+            type: object
+            properties:
+                stats:
+                    type: object
+                    properties:
+                        source_kind:
+                            type: string
+                        total_items:
+                            type: integer
+                        by_mr:
+                            type:
+                                - "null"
+                                - array
+                            items:
+                                type: object
+                                properties:
+                                    project_id:
+                                        type: integer
+                                    mr_iid:
+                                        type: integer
+                                    count:
+                                        type: integer
+                                required:
+                                    - project_id
+                                    - mr_iid
+                                    - count
+                                additionalProperties: false
+                        by_label:
+                            type: object
+                            additionalProperties:
+                                type: integer
+                        by_date:
+                            type: object
+                            additionalProperties:
+                                type: integer
+                    description: 'the aggregate: total item count and, depending on the input artifact''s kind, breakdowns by merge request, by label, and by day'
+                    required:
+                        - source_kind
+                        - total_items
+                    additionalProperties: false
+                path:
+                    type: string
+                    description: path the aggregate was written to; set only when artifacts_dir was given
+            required:
+                - stats
             additionalProperties: false
         LabeledComments:
             type: object
@@ -534,13 +632,11 @@ components:
                         user_id:
                             type: integer
                         from:
-                            type: object
-                            properties: {}
-                            additionalProperties: false
+                            type: string
+                            format: date
                         to:
-                            type: object
-                            properties: {}
-                            additionalProperties: false
+                            type: string
+                            format: date
                         mrs:
                             type:
                                 - "null"
@@ -736,13 +832,11 @@ components:
                         user_id:
                             type: integer
                         from:
-                            type: object
-                            properties: {}
-                            additionalProperties: false
+                            type: string
+                            format: date
                         to:
-                            type: object
-                            properties: {}
-                            additionalProperties: false
+                            type: string
+                            format: date
                         more_than:
                             type: integer
                         group:
@@ -861,4 +955,17 @@ components:
                 - labels
                 - tool
                 - model
+            additionalProperties: false
+        SaveLabelsOutput:
+            type: object
+            properties:
+                path:
+                    type: string
+                    description: path to the written labeled_comments artifact
+                count:
+                    type: integer
+                    description: number of labeled comments written
+            required:
+                - path
+                - count
             additionalProperties: false

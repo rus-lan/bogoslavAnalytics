@@ -14,3 +14,9 @@ type FilterCommentsInput struct {
 	ArtifactsDir string `json:"artifacts_dir,omitempty" jsonschema:"directory the filtered_comments artifact is written under (default \"artifacts\")"`
 	Format       string `json:"format,omitempty" jsonschema:"artifact wire format: json, yaml, text, or html (default yaml); this tool never consults a cache before running -- it always reads from_artifact and reprocesses it"`
 }
+
+// FilterCommentsOutput is the filter_comments tool's output.
+type FilterCommentsOutput struct {
+	Path  string `json:"path" jsonschema:"path to the written filtered_comments artifact"`
+	Count int    `json:"count" jsonschema:"number of comments kept after filtering"`
+}

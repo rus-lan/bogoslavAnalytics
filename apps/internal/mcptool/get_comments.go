@@ -17,3 +17,10 @@ type GetCommentsInput struct {
 	Refresh         bool   `json:"refresh,omitempty" jsonschema:"bypass the cache and always call GitLab, even if a fresh cached comment_list artifact already exists"`
 	CacheTTLSeconds int64  `json:"cache_ttl_seconds,omitempty" jsonschema:"how long, in seconds, a cached comment_list artifact stays fresh before this tool calls GitLab again (default 86400, 24h)"`
 }
+
+// GetCommentsOutput is the get_comments tool's output.
+type GetCommentsOutput struct {
+	Path     string `json:"path" jsonschema:"path to the written (or, on a cache hit, already-existing) comment_list artifact"`
+	CacheHit bool   `json:"cache_hit" jsonschema:"true when this result came from an existing artifact without calling GitLab"`
+	Count    int    `json:"count" jsonschema:"number of comments in the result"`
+}

@@ -114,6 +114,19 @@ var toolInputSchemaNames = []string{
 	"GetStatsInput",
 }
 
+// toolOutputSchemaNames are five of the six MCP tools' output types'
+// component schema names (TZ.md section 7.2). get_classify_batch's
+// output, GetClassifyBatchOutput, is the one documented exception (see
+// doc.go, TestGenerate_omitsGetClassifyBatchOutput) and is not in this
+// list.
+var toolOutputSchemaNames = []string{
+	"FindMRsOutput",
+	"GetCommentsOutput",
+	"SaveLabelsOutput",
+	"FilterCommentsOutput",
+	"GetStatsOutput",
+}
+
 // artifactSchemaNames are the four artifact document types' component
 // schema names (TZ.md section 4), corresponding to kinds mr_list,
 // comment_list, labeled_comments and filtered_comments respectively.
@@ -154,6 +167,34 @@ func TestGenerate_containsAllSixToolInputSchemas(t *testing.T) {
 	}
 }
 
+// TestGenerate_containsAllFiveToolOutputSchemas is the acceptance check
+// for TZ.md section 10's "schemas of input AND output of every MCP
+// tool": five of the six tools' output types are present in
+// components/schemas, each type object and draft-2020-12 shaped (no
+// $schema keyword pinned).
+func TestGenerate_containsAllFiveToolOutputSchemas(t *testing.T) {
+	data, err := Generate()
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	doc := mustParse(t, data)
+
+	for _, name := range toolOutputSchemaNames {
+		t.Run(name, func(t *testing.T) {
+			schema, ok := doc.Components.Schemas[name]
+			if !ok {
+				t.Fatalf("components/schemas is missing %q", name)
+			}
+			if schema["type"] != "object" {
+				t.Errorf("%s.type = %v, want %q", name, schema["type"], "object")
+			}
+			if v, has := schema["$schema"]; has {
+				t.Errorf("%s.$schema = %v, want absent (unset means 2020-12 by default)", name, v)
+			}
+		})
+	}
+}
+
 // TestGenerate_containsAllFourArtifactSchemas is the acceptance check
 // for the four artifact schemas (mr_list, comment_list,
 // labeled_comments, filtered_comments -- TZ.md section 4).
@@ -172,6 +213,90 @@ func TestGenerate_containsAllFourArtifactSchemas(t *testing.T) {
 			}
 			if schema["type"] != "object" {
 				t.Errorf("%s.type = %v, want %q", name, schema["type"], "object")
+			}
+		})
+	}
+}
+
+// nestedMap walks m through a sequence of map keys, failing the test if
+// any key is missing or its value is not itself a map. It exists so
+// tests can reach into a parsed schema's nested properties (e.g.
+// properties.query.properties) without repeating type assertions.
+func nestedMap(t *testing.T, m map[string]any, path ...string) map[string]any {
+	t.Helper()
+	cur := m
+	for _, p := range path {
+		v, ok := cur[p]
+		if !ok {
+			t.Fatalf("missing key %q while walking path %v", p, path)
+		}
+		next, ok := v.(map[string]any)
+		if !ok {
+			t.Fatalf("key %q is not an object while walking path %v: %#v", p, path, v)
+		}
+		cur = next
+	}
+	return cur
+}
+
+// hasJSONSchemaType reports whether schema's "type" keyword is want,
+// whether it was rendered as a single string (Schema.Type) or as a list
+// (Schema.Types, used when a field is also nullable).
+func hasJSONSchemaType(schema map[string]any, want string) bool {
+	switch v := schema["type"].(type) {
+	case string:
+		return v == want
+	case []any:
+		for _, elem := range v {
+			if s, ok := elem.(string); ok && s == want {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// TestGenerate_artifactDateFieldsRenderAsStrings is the direct guard
+// against the contract's honesty defect this package's own doc.go
+// documents (artifactForOptions, dateSchema): domain.Date's only
+// exported surface is a MarshalJSON method, invisible to
+// jsonschema.ForType's field reflection since every field is
+// unexported, so without the artifact-only TypeSchemas override every
+// query.from/query.to would render as an empty `type: object` even
+// though domain.Date always marshals to a "YYYY-MM-DD" string on the
+// wire. This checks all four artifact schemas' from/to fields render as
+// a JSON Schema string with format "date", never as an object, so this
+// lie cannot come back silently.
+func TestGenerate_artifactDateFieldsRenderAsStrings(t *testing.T) {
+	data, err := Generate()
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	doc := mustParse(t, data)
+
+	for _, name := range artifactSchemaNames {
+		t.Run(name, func(t *testing.T) {
+			schema, ok := doc.Components.Schemas[name]
+			if !ok {
+				t.Fatalf("components/schemas is missing %q", name)
+			}
+			query := nestedMap(t, schema, "properties", "query", "properties")
+
+			for _, field := range []string{"from", "to"} {
+				fieldSchema, ok := query[field].(map[string]any)
+				if !ok {
+					t.Fatalf("%s.query.properties.%s is not an object: %#v", name, field, query[field])
+				}
+				if hasJSONSchemaType(fieldSchema, "object") {
+					t.Errorf("%s.query.%s.type = %#v, renders as an object -- domain.Date's "+
+						"wire form (\"YYYY-MM-DD\") is a string, not an object", name, field, fieldSchema["type"])
+				}
+				if !hasJSONSchemaType(fieldSchema, "string") {
+					t.Errorf("%s.query.%s.type = %#v, want it to include %q", name, field, fieldSchema["type"], "string")
+				}
+				if fieldSchema["format"] != "date" {
+					t.Errorf("%s.query.%s.format = %v, want %q", name, field, fieldSchema["format"], "date")
+				}
 			}
 		})
 	}

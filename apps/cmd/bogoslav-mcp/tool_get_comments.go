@@ -11,13 +11,6 @@ import (
 	"github.com/rus-lan/bogoslav-analytics/apps/internal/mcptool"
 )
 
-// GetCommentsOutput is the get_comments tool's output.
-type GetCommentsOutput struct {
-	Path     string `json:"path" jsonschema:"path to the written (or, on a cache hit, already-existing) comment_list artifact"`
-	CacheHit bool   `json:"cache_hit" jsonschema:"true when this result came from an existing artifact without calling GitLab"`
-	Count    int    `json:"count" jsonschema:"number of comments in the result"`
-}
-
 // newGetCommentsRequest converts in and an already-resolved userID into
 // an app.GetCommentsRequest. It makes no GitLab call itself: userID
 // resolution (TZ.md section 5.0) is getComments's job, so this mapping
@@ -53,23 +46,23 @@ func newGetCommentsRequest(in mcptool.GetCommentsInput, gitlabURL string, userID
 // getComments is the get_comments tool handler: resolve user, build the
 // request, and call app.GetComments (TZ.md section 7.3: one function of
 // apps/internal/app per tool).
-func (s *toolServer) getComments(ctx context.Context, _ *mcp.CallToolRequest, in mcptool.GetCommentsInput) (*mcp.CallToolResult, GetCommentsOutput, error) {
+func (s *toolServer) getComments(ctx context.Context, _ *mcp.CallToolRequest, in mcptool.GetCommentsInput) (*mcp.CallToolResult, mcptool.GetCommentsOutput, error) {
 	userID, err := app.ResolveUser(ctx, s.client, in.User)
 	if err != nil {
-		return nil, GetCommentsOutput{}, fmt.Errorf("get_comments: %w", err)
+		return nil, mcptool.GetCommentsOutput{}, fmt.Errorf("get_comments: %w", err)
 	}
 
 	req, err := newGetCommentsRequest(in, s.gitlabURL, userID)
 	if err != nil {
-		return nil, GetCommentsOutput{}, err
+		return nil, mcptool.GetCommentsOutput{}, err
 	}
 
 	result, err := app.GetComments(ctx, s.client, req)
 	if err != nil {
-		return nil, GetCommentsOutput{}, fmt.Errorf("get_comments: %w", err)
+		return nil, mcptool.GetCommentsOutput{}, fmt.Errorf("get_comments: %w", err)
 	}
 
-	return nil, GetCommentsOutput{
+	return nil, mcptool.GetCommentsOutput{
 		Path:     result.Path,
 		CacheHit: result.CacheHit,
 		Count:    len(result.Doc.Items),
