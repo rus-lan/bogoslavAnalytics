@@ -13,8 +13,10 @@ import (
 
 // smokeServer builds a fake GitLab server for the smoke test: it serves
 // comment events for one user and /discussions for a fixed set of merge
-// requests.
-func smokeServer(t *testing.T, events []CommentEvent, discussionsByMR map[[2]int64][]domain.Discussion) *httptest.Server {
+// requests. discussionCalls, if non-nil, is incremented once per
+// first-page /discussions request, so tests can assert on the call
+// budget.
+func smokeServer(t *testing.T, events []CommentEvent, discussionsByMR map[[2]int64][]domain.Discussion, discussionCalls *int) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -33,6 +35,9 @@ func smokeServer(t *testing.T, events []CommentEvent, discussionsByMR map[[2]int
 				if r.URL.Query().Get("page") != "1" {
 					writeJSON(t, w, []domain.Discussion{})
 					return
+				}
+				if discussionCalls != nil {
+					*discussionCalls++
 				}
 				writeJSON(t, w, discussionsByMR[[2]int64{projectID, mrIID}])
 				return
@@ -60,6 +65,34 @@ func discussionWithNote(id int64, noteID int64, noteType domain.NoteType, author
 	}
 }
 
+// discussionsWithNotes builds a single discussion thread with count notes,
+// all authored by authorID at createdAt, alternating between
+// domain.NoteTypeDiscussion and domain.NoteTypeNone -- the real incident's
+// mix (28 DiscussionNote + 4 null-type notes on the same merge request).
+func discussionsWithNotes(discID int64, count int, discussionCount int, authorID int64, createdAt time.Time) []domain.Discussion {
+	notes := make([]domain.Note, 0, count)
+	for i := 0; i < count; i++ {
+		noteType := domain.NoteTypeNone
+		if i < discussionCount {
+			noteType = domain.NoteTypeDiscussion
+		}
+		notes = append(notes, domain.Note{
+			ID:           1000 + int64(i),
+			Type:         noteType,
+			Body:         "body",
+			Author:       domain.Author{ID: authorID, Username: "user"},
+			CreatedAt:    createdAt,
+			NoteableID:   77,
+			NoteableType: "MergeRequest",
+			ProjectID:    123,
+		})
+	}
+	return []domain.Discussion{{
+		ID:    fmt.Sprintf("disc-%d", discID),
+		Notes: notes,
+	}}
+}
+
 func mrEvent(projectID, mrIID int64, createdAt time.Time) CommentEvent {
 	return CommentEvent{
 		ProjectID:  projectID,
@@ -73,6 +106,17 @@ func mrEvent(projectID, mrIID int64, createdAt time.Time) CommentEvent {
 			NoteableIID:  mrIID,
 		},
 	}
+}
+
+// mrEvents returns n copies of an event for the same merge request, the
+// shape mrCandidatesFromEvents folds into a single candidate with
+// eventCount == n.
+func mrEvents(projectID, mrIID int64, n int, createdAt time.Time) []CommentEvent {
+	out := make([]CommentEvent, 0, n)
+	for i := 0; i < n; i++ {
+		out = append(out, mrEvent(projectID, mrIID, createdAt))
+	}
+	return out
 }
 
 func TestClient_SmokeTest_passedWhenEventCountMatchesOrExceedsDiscussionCount(t *testing.T) {
@@ -89,7 +133,7 @@ func TestClient_SmokeTest_passedWhenEventCountMatchesOrExceedsDiscussionCount(t 
 		},
 	}
 
-	srv := smokeServer(t, events, discussions)
+	srv := smokeServer(t, events, discussions, nil)
 	defer srv.Close()
 
 	c := NewClient(srv.URL, "token")
@@ -121,7 +165,7 @@ func TestClient_SmokeTest_failedWhenEventsUndercountDiscussions(t *testing.T) {
 		},
 	}
 
-	srv := smokeServer(t, events, discussions)
+	srv := smokeServer(t, events, discussions, nil)
 	defer srv.Close()
 
 	c := NewClient(srv.URL, "token")
@@ -136,23 +180,157 @@ func TestClient_SmokeTest_failedWhenEventsUndercountDiscussions(t *testing.T) {
 	}
 }
 
-func TestClient_SmokeTest_unknownWhenNoThreadRepliesSampled(t *testing.T) {
+// TestClient_SmokeTest_realIncidentUndercount encodes the confirmed live
+// defect: on a real GitLab 18.11 instance, the Events API reported 23
+// comment events for a merge request whose /discussions held 32 notes by
+// that user (28 DiscussionNote + 4 null-type). SmokeFailed on this data is
+// the CORRECT answer, not a false positive: the Events API really does
+// undercount on that instance.
+func TestClient_SmokeTest_realIncidentUndercount(t *testing.T) {
+	fixedNow := time.Date(2026, time.July, 15, 12, 0, 0, 0, time.UTC)
+	activityAt := fixedNow.Add(-24 * time.Hour)
+
+	events := mrEvents(555, 999, 23, activityAt)
+	discussions := map[[2]int64][]domain.Discussion{
+		{555, 999}: discussionsWithNotes(1, 32, 28, 42, activityAt),
+	}
+
+	srv := smokeServer(t, events, discussions, nil)
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "token")
+	c.now = func() time.Time { return fixedNow }
+
+	result, err := c.SmokeTest(t.Context(), 42)
+	if err != nil {
+		t.Fatalf("SmokeTest() error = %v", err)
+	}
+	if result != domain.SmokeFailed {
+		t.Errorf("SmokeTest() = %q, want %q (23 events vs 32 discussion notes -- the confirmed live undercount)", result, domain.SmokeFailed)
+	}
+}
+
+// TestClient_SmokeTest_verdictDoesNotDependOnWhichMRsAreNewest is the
+// regression test for the real instability: the same user, same
+// instance, produced "unknown" on one run and "failed" minutes later,
+// purely because a different set of newest merge requests got sampled.
+// Here the 5 newest merge requests carry only DiffNote comments (no
+// DiscussionNote at all, matching or exceeding their event counts) and a
+// 6th, older merge request has a genuine DiscussionNote undercount. The
+// old code sampled only 5 raw candidates and required a DiscussionNote
+// among them to ever leave "unknown", so it never reached MR 6 and
+// returned SmokeUnknown. The fix must reach MR 6, and reach the SAME
+// verdict on every call.
+func TestClient_SmokeTest_verdictDoesNotDependOnWhichMRsAreNewest(t *testing.T) {
 	fixedNow := time.Date(2026, time.July, 15, 12, 0, 0, 0, time.UTC)
 	commentAt := fixedNow.Add(-24 * time.Hour)
 
-	events := []CommentEvent{
-		mrEvent(123, 77, commentAt),
+	var events []CommentEvent
+	discussions := map[[2]int64][]domain.Discussion{}
+	// 5 newest MRs (iid 1..5): one DiffNote comment each, event count
+	// matches the discussion count exactly -- clean, but NOT
+	// DiscussionNote, and NOT the affected MR.
+	for iid := int64(1); iid <= 5; iid++ {
+		events = append(events, mrEvent(123, iid, commentAt))
+		discussions[[2]int64{123, iid}] = []domain.Discussion{
+			discussionWithNote(iid, 200+iid, domain.NoteTypeDiff, 42, false, commentAt),
+		}
 	}
-	// The only note the user has on this MR is a plain, non-threaded
-	// comment (Type == NoteTypeNone), so the sample never sees a thread
-	// reply.
-	discussions := map[[2]int64][]domain.Discussion{
-		{123, 77}: {
-			discussionWithNote(1, 200, domain.NoteTypeNone, 42, false, commentAt),
-		},
+	// The 6th (older) MR: one event reaches the client, but /discussions
+	// shows two DiscussionNote replies -- the genuine undercount.
+	events = append(events, mrEvent(123, 6, commentAt))
+	discussions[[2]int64{123, 6}] = []domain.Discussion{
+		discussionWithNote(6, 300, domain.NoteTypeDiscussion, 42, false, commentAt),
+		discussionWithNote(7, 301, domain.NoteTypeDiscussion, 42, false, commentAt.Add(time.Minute)),
 	}
 
-	srv := smokeServer(t, events, discussions)
+	srv := smokeServer(t, events, discussions, nil)
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "token")
+	c.now = func() time.Time { return fixedNow }
+
+	for i := 0; i < 3; i++ {
+		result, err := c.SmokeTest(t.Context(), 42)
+		if err != nil {
+			t.Fatalf("SmokeTest() call %d error = %v", i, err)
+		}
+		if result != domain.SmokeFailed {
+			t.Fatalf("SmokeTest() call %d = %q, want %q (identical data must always reach MR 6's undercount, never unknown)", i, result, domain.SmokeFailed)
+		}
+	}
+}
+
+// TestClient_SmokeTest_diffNoteOnlyUserReachesRealVerdict proves a user
+// who writes only DiffNote line comments (never a DiscussionNote thread
+// reply) can still get a definitive answer, both when clean (passed) and
+// when undercounted (failed) -- the old code could only ever return
+// SmokeUnknown for such a user, forcing permanent bruteforce.
+func TestClient_SmokeTest_diffNoteOnlyUserReachesRealVerdict(t *testing.T) {
+	fixedNow := time.Date(2026, time.July, 15, 12, 0, 0, 0, time.UTC)
+	commentAt := fixedNow.Add(-24 * time.Hour)
+
+	t.Run("clean", func(t *testing.T) {
+		events := []CommentEvent{mrEvent(123, 77, commentAt)}
+		discussions := map[[2]int64][]domain.Discussion{
+			{123, 77}: {discussionWithNote(1, 200, domain.NoteTypeDiff, 42, false, commentAt)},
+		}
+		srv := smokeServer(t, events, discussions, nil)
+		defer srv.Close()
+
+		c := NewClient(srv.URL, "token")
+		c.now = func() time.Time { return fixedNow }
+
+		result, err := c.SmokeTest(t.Context(), 42)
+		if err != nil {
+			t.Fatalf("SmokeTest() error = %v", err)
+		}
+		if result != domain.SmokePassed {
+			t.Errorf("SmokeTest() = %q, want %q", result, domain.SmokePassed)
+		}
+	})
+
+	t.Run("undercounted", func(t *testing.T) {
+		events := []CommentEvent{mrEvent(123, 77, commentAt)}
+		discussions := map[[2]int64][]domain.Discussion{
+			{123, 77}: {
+				discussionWithNote(1, 200, domain.NoteTypeDiff, 42, false, commentAt),
+				discussionWithNote(2, 201, domain.NoteTypeDiff, 42, false, commentAt.Add(time.Minute)),
+			},
+		}
+		srv := smokeServer(t, events, discussions, nil)
+		defer srv.Close()
+
+		c := NewClient(srv.URL, "token")
+		c.now = func() time.Time { return fixedNow }
+
+		result, err := c.SmokeTest(t.Context(), 42)
+		if err != nil {
+			t.Fatalf("SmokeTest() error = %v", err)
+		}
+		if result != domain.SmokeFailed {
+			t.Errorf("SmokeTest() = %q, want %q", result, domain.SmokeFailed)
+		}
+	})
+}
+
+// TestClient_SmokeTest_unknownWhenSampledNotesBelongToSomeoneElse builds
+// the honest "no data to probe with" case: an event exists for the merge
+// request, but by the time /discussions is fetched the only note there
+// is authored by someone else (for example, the user's own note that
+// generated the event was deleted in between). There is nothing to
+// compare an event count against, so the verdict is genuinely
+// inconclusive.
+func TestClient_SmokeTest_unknownWhenSampledNotesBelongToSomeoneElse(t *testing.T) {
+	fixedNow := time.Date(2026, time.July, 15, 12, 0, 0, 0, time.UTC)
+	commentAt := fixedNow.Add(-24 * time.Hour)
+
+	events := []CommentEvent{mrEvent(123, 77, commentAt)}
+	discussions := map[[2]int64][]domain.Discussion{
+		{123, 77}: {discussionWithNote(1, 200, domain.NoteTypeDiscussion, 999, false, commentAt)},
+	}
+
+	srv := smokeServer(t, events, discussions, nil)
 	defer srv.Close()
 
 	c := NewClient(srv.URL, "token")
@@ -170,7 +348,7 @@ func TestClient_SmokeTest_unknownWhenNoThreadRepliesSampled(t *testing.T) {
 func TestClient_SmokeTest_unknownWhenNoCandidateEventsAtAll(t *testing.T) {
 	fixedNow := time.Date(2026, time.July, 15, 12, 0, 0, 0, time.UTC)
 
-	srv := smokeServer(t, []CommentEvent{}, nil)
+	srv := smokeServer(t, []CommentEvent{}, nil, nil)
 	defer srv.Close()
 
 	c := NewClient(srv.URL, "token")
@@ -185,50 +363,40 @@ func TestClient_SmokeTest_unknownWhenNoCandidateEventsAtAll(t *testing.T) {
 	}
 }
 
-func TestClient_SmokeTest_samplesAtMostFiveCandidates(t *testing.T) {
+// TestClient_SmokeTest_callBudgetStaysBounded builds far more distinct
+// candidate merge requests than smokeMaxCandidates, all clean (no
+// undercount), so the scan never stops early on a failure -- it must run
+// to the end of the budget every time. The number of /discussions
+// requests must stay at smokeMaxCandidates, never grow with the number
+// of merge requests the user has recent events on.
+func TestClient_SmokeTest_callBudgetStaysBounded(t *testing.T) {
 	fixedNow := time.Date(2026, time.July, 15, 12, 0, 0, 0, time.UTC)
 	commentAt := fixedNow.Add(-24 * time.Hour)
 
+	const totalMRs = smokeMaxCandidates + 5
+
 	var events []CommentEvent
 	discussions := map[[2]int64][]domain.Discussion{}
-	for i := int64(1); i <= 8; i++ {
-		events = append(events, mrEvent(123, i, commentAt))
-		discussions[[2]int64{123, i}] = []domain.Discussion{
-			discussionWithNote(i, 200+i, domain.NoteTypeDiscussion, 42, false, commentAt),
+	for iid := int64(1); iid <= totalMRs; iid++ {
+		events = append(events, mrEvent(123, iid, commentAt))
+		discussions[[2]int64{123, iid}] = []domain.Discussion{
+			discussionWithNote(iid, 200+iid, domain.NoteTypeDiscussion, 42, false, commentAt),
 		}
 	}
 
 	var discussionRequests int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v4/users/42/events" {
-			if r.URL.Query().Get("page") != "1" {
-				writeJSON(t, w, []CommentEvent{})
-				return
-			}
-			writeJSON(t, w, events)
-			return
-		}
-		var projectID, mrIID int64
-		if _, err := fmt.Sscanf(r.URL.Path, "/api/v4/projects/%d/merge_requests/%d/discussions", &projectID, &mrIID); err == nil {
-			if r.URL.Query().Get("page") == "1" {
-				discussionRequests++
-			}
-			if r.URL.Query().Get("page") != "1" {
-				writeJSON(t, w, []domain.Discussion{})
-				return
-			}
-			writeJSON(t, w, discussions[[2]int64{projectID, mrIID}])
-			return
-		}
-		t.Fatalf("unexpected request path: %s", r.URL.Path)
-	}))
+	srv := smokeServer(t, events, discussions, &discussionRequests)
 	defer srv.Close()
 
 	c := NewClient(srv.URL, "token")
 	c.now = func() time.Time { return fixedNow }
 
-	if _, err := c.SmokeTest(t.Context(), 42); err != nil {
+	result, err := c.SmokeTest(t.Context(), 42)
+	if err != nil {
 		t.Fatalf("SmokeTest() error = %v", err)
+	}
+	if result != domain.SmokePassed {
+		t.Errorf("SmokeTest() = %q, want %q", result, domain.SmokePassed)
 	}
 	if discussionRequests != smokeMaxCandidates {
 		t.Errorf("discussion requests made = %d, want %d (smokeMaxCandidates)", discussionRequests, smokeMaxCandidates)

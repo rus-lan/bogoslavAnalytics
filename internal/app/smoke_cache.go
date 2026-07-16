@@ -31,16 +31,39 @@ const smokeCacheName = "smoke_test"
 // drifting apart; wrapping the client keeps there from ever being a
 // second copy.
 //
-// Keyed on {gitlab_url, user_id}, deliberately not on gitlab_url alone:
-// the smoke probe needs a user who actually has thread replies to test
-// against (TZ.md section 5.5.4), so on one instance it can legitimately
-// come back SmokeUnknown for a user with no such replies while coming
-// back SmokePassed for a different user. SmokeUnknown is the
-// autoselector's conservative fallback -- it forces bruteforce (TZ.md
-// section 5.3b). Keying on the instance alone would let one user's
-// inconclusive probe silently force bruteforce (roughly 10x the API call
-// volume, TZ.md section 5) onto every other user asking about the same
-// instance, for a reason that has nothing to do with them.
+// Keyed on {gitlab_url, user_id, tool_version}, deliberately not on
+// gitlab_url alone: the smoke probe needs a user who actually has
+// thread replies to test against (TZ.md section 5.5.4), so on one
+// instance it can legitimately come back SmokeUnknown for a user with
+// no such replies while coming back SmokePassed for a different user.
+// SmokeUnknown is the autoselector's conservative fallback -- it forces
+// bruteforce (TZ.md section 5.3b). Keying on the instance alone would
+// let one user's inconclusive probe silently force bruteforce (roughly
+// 10x the API call volume, TZ.md section 5) onto every other user
+// asking about the same instance, for a reason that has nothing to do
+// with them.
+//
+// tool_version is folded in for the same reason cache.QueryHash folds
+// it into artifact-1's key (TZ.md section 4.6), not merely by analogy:
+// TZ.md section 5.5 documents a REAL prior incident in this exact
+// probe -- the first SmokeTest implementation sampled only 5 candidates
+// and skipped any with zero DiscussionNote replies before comparing
+// counts, which produced wrong verdicts on live data and was rewritten
+// (the procedure this file's SmokeTest call now runs). A cached
+// SmokeResult is this probe's own interpretation of raw event/discussion
+// counts, computed by OUR heuristic -- unlike ResolveUserCached's
+// {gitlab_url, username} cache (user.go), which stores a plain fact
+// GitLab itself owns (a username's numeric id) and deliberately does
+// NOT fold in tool_version, see that function's doc comment. If a
+// future release changes this probe's heuristic again (candidate
+// selection, the comparable-candidate rule, the budget, anything in
+// TZ.md section 5.5's procedure), a smoke_test entry a pre-fix binary
+// already wrote must not go on answering a post-fix binary's identical
+// {gitlab_url, user_id} query for the rest of its TTL -- that would
+// silently defeat the fix in exactly the shape TZ.md section 4.6's
+// v0.2.0 incident already demonstrated once, one layer removed (a
+// stale verdict picking the wrong search strategy, instead of a stale
+// artifact answering with the wrong items).
 type cachingSmokeClient struct {
 	search.Client
 	gitlabURL string
@@ -61,8 +84,9 @@ var _ search.Client = (*cachingSmokeClient)(nil)
 // a source of truth).
 func (c *cachingSmokeClient) SmokeTest(ctx context.Context, userID int64) (domain.SmokeResult, error) {
 	hash, hashErr := cache.Hash(map[string]any{
-		"gitlab_url": c.gitlabURL,
-		"user_id":    userID,
+		"gitlab_url":   c.gitlabURL,
+		"user_id":      userID,
+		"tool_version": ToolVersion,
 	})
 	if hashErr == nil {
 		if cached, hit := cache.Get[domain.SmokeResult](smokeCacheName, hash, c.opts, c.now()); hit {

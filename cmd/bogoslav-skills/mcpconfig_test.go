@@ -11,7 +11,7 @@ import (
 func TestEntryJSON_familyAMatchesDocumentedShape(t *testing.T) {
 	d := serverDescriptor{Name: "bogoslav", Command: "/path/to/bogoslav-mcp", Args: []string{}, Env: map[string]string{}}
 
-	got, err := entryJSON(familyA, d)
+	got, err := entryJSON(familyA, d, nil)
 	if err != nil {
 		t.Fatalf("entryJSON: %v", err)
 	}
@@ -34,7 +34,7 @@ func TestEntryJSON_familyAMatchesDocumentedShape(t *testing.T) {
 func TestEntryJSON_familyBMatchesDocumentedShape(t *testing.T) {
 	d := serverDescriptor{Name: "bogoslav", Command: "/path/to/bogoslav-mcp", Args: []string{}, Env: map[string]string{}}
 
-	got, err := entryJSON(familyB, d)
+	got, err := entryJSON(familyB, d, nil)
 	if err != nil {
 		t.Fatalf("entryJSON: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestEntryJSON_familyBMatchesDocumentedShape(t *testing.T) {
 func TestEntryJSON_familyBCommandIsOneArrayNotCommandPlusArgs(t *testing.T) {
 	d := serverDescriptor{Name: "bogoslav", Command: "bogoslav-mcp", Args: []string{"--flag", "value"}, Env: map[string]string{}}
 
-	got, err := entryJSON(familyB, d)
+	got, err := entryJSON(familyB, d, nil)
 	if err != nil {
 		t.Fatalf("entryJSON: %v", err)
 	}
@@ -68,6 +68,45 @@ func TestEntryJSON_familyBCommandIsOneArrayNotCommandPlusArgs(t *testing.T) {
 	for i := range want {
 		if decoded.Command[i] != want[i] {
 			t.Fatalf("command = %v, want %v", decoded.Command, want)
+		}
+	}
+}
+
+// TestEntryJSON_writesTimeoutKeyWhenProvided covers TZ.md section 9.4:
+// a non-nil timeoutMillis must land as a numeric "timeout" key, in
+// milliseconds, for both config families -- not as a string, and not
+// under any other key name.
+func TestEntryJSON_writesTimeoutKeyWhenProvided(t *testing.T) {
+	d := serverDescriptor{Name: "bogoslav", Command: "/path/to/bogoslav-mcp", Args: []string{}, Env: map[string]string{}}
+
+	for _, f := range []family{familyA, familyB} {
+		got := mustEntryJSONWithTimeout(t, f, d, 3600000)
+
+		var decoded struct {
+			Timeout *int64 `json:"timeout"`
+		}
+		decodeJSON(t, got, &decoded)
+
+		if decoded.Timeout == nil {
+			t.Fatalf("family %v: timeout key missing, got %s", f, got)
+		}
+		if *decoded.Timeout != 3600000 {
+			t.Errorf("family %v: timeout = %d, want 3600000", f, *decoded.Timeout)
+		}
+	}
+}
+
+// TestEntryJSON_omitsTimeoutKeyWhenNil covers the other half of TZ.md
+// section 9.4: a nil timeoutMillis (what installOne passes for cline and
+// cursor) must leave the "timeout" key entirely absent, not present with
+// a zero or null value that would look like a deliberate setting.
+func TestEntryJSON_omitsTimeoutKeyWhenNil(t *testing.T) {
+	d := serverDescriptor{Name: "bogoslav", Command: "/path/to/bogoslav-mcp", Args: []string{}, Env: map[string]string{}}
+
+	for _, f := range []family{familyA, familyB} {
+		got := mustEntryJSON(t, f, d)
+		if bytes.Contains(got, []byte("timeout")) {
+			t.Errorf("family %v: entry has a \"timeout\" key with nil timeoutMillis, got %s", f, got)
 		}
 	}
 }
@@ -262,7 +301,19 @@ func TestMergeStdioServer_rejectsNonObjectRoot(t *testing.T) {
 
 func mustEntryJSON(t *testing.T, f family, d serverDescriptor) []byte {
 	t.Helper()
-	got, err := entryJSON(f, d)
+	got, err := entryJSON(f, d, nil)
+	if err != nil {
+		t.Fatalf("entryJSON: %v", err)
+	}
+	return got
+}
+
+// mustEntryJSONWithTimeout is mustEntryJSON plus an explicit per-server
+// timeout in milliseconds, for the tests that check entryJSON actually
+// writes the "timeout" key when a caller passes one.
+func mustEntryJSONWithTimeout(t *testing.T, f family, d serverDescriptor, timeoutMillis int64) []byte {
+	t.Helper()
+	got, err := entryJSON(f, d, &timeoutMillis)
 	if err != nil {
 		t.Fatalf("entryJSON: %v", err)
 	}

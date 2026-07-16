@@ -3,6 +3,7 @@ package clitree
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -21,6 +22,7 @@ type filterCommentsFlags struct {
 	to           string
 	group        string
 	project      string
+	timeout      time.Duration
 
 	out commonOutputFlags
 }
@@ -76,6 +78,7 @@ func registerFilterCommentsFlags(cmd *cobra.Command, flags *filterCommentsFlags)
 	_ = cmd.MarkFlagRequired("from-artifact")
 
 	addCommonOutputFlags(cmd, &flags.out, formatFourKinds, dirNoCache)
+	addTimeoutFlag(cmd, &flags.timeout)
 }
 
 // resolveFilterScope resolves --group/--project into the numeric ids
@@ -186,7 +189,11 @@ func runFilterComments(cmd *cobra.Command, flags filterCommentsFlags) error {
 	var projectIDs []int64
 	var projectID *int64
 	if flags.group != "" || flags.project != "" {
-		client, err := newGitlabClient()
+		opts, err := timeoutOption(cmd, flags.timeout)
+		if err != nil {
+			return err
+		}
+		client, err := newGitlabClient(opts...)
 		if err != nil {
 			return err
 		}

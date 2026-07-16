@@ -217,3 +217,40 @@ func TestResolveUserCached_malformedEntryIsCleanExtraCall(t *testing.T) {
 		t.Errorf("ResolveUserCached() made %d ResolveUserID calls for a malformed entry, want 1 (clean extra call, not an error)", resolver.calls)
 	}
 }
+
+// TestResolveUserCached_toolVersionChangeDoesNotForceMiss is the
+// regression guard for the deliberate decision recorded in
+// ResolveUserCached's own doc comment: unlike cache.QueryHash and
+// cachingSmokeClient's key, this cache's {gitlab_url, username} key
+// never folds in ToolVersion, because a resolved username-to-id mapping
+// is a fact GitLab's own database owns, not an interpretation this
+// tool's own release could have gotten wrong and later fixed. A change
+// in ToolVersion between two calls must not force a miss here.
+func TestResolveUserCached_toolVersionChangeDoesNotForceMiss(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, time.July, 15, 12, 0, 0, 0, time.UTC)
+	opts := cache.Options{Dir: dir, TTL: cache.DefaultTTL}
+
+	resolver := &fakeUserResolver{fn: func(ctx context.Context, username string) (int64, error) {
+		return 99, nil
+	}}
+
+	savedVersion := ToolVersion
+	defer func() { ToolVersion = savedVersion }()
+
+	ToolVersion = "v-before"
+	if _, err := ResolveUserCached(context.Background(), resolver, "https://gitlab.example.com", "alice", opts, now); err != nil {
+		t.Fatalf("ResolveUserCached() first call error = %v", err)
+	}
+	if resolver.calls != 1 {
+		t.Fatalf("ResolveUserCached() first call made %d ResolveUserID calls, want 1", resolver.calls)
+	}
+
+	ToolVersion = "v-after"
+	if _, err := ResolveUserCached(context.Background(), resolver, "https://gitlab.example.com", "alice", opts, now); err != nil {
+		t.Fatalf("ResolveUserCached() second call error = %v", err)
+	}
+	if resolver.calls != 1 {
+		t.Errorf("ResolveUserCached() after a ToolVersion change made %d total ResolveUserID calls, want still 1 (this cache is deliberately not keyed on tool_version)", resolver.calls)
+	}
+}

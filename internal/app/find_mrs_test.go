@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/rus-lan/bogoslavAnalytics/internal/artifact"
+	"github.com/rus-lan/bogoslavAnalytics/internal/cache"
 	"github.com/rus-lan/bogoslavAnalytics/internal/domain"
 	"github.com/rus-lan/bogoslavAnalytics/internal/gitlab"
 	"github.com/rus-lan/bogoslavAnalytics/internal/search"
@@ -462,6 +463,89 @@ func TestFindMRs_expiredEntryIsMiss(t *testing.T) {
 	}
 	if result.CacheHit {
 		t.Errorf("FindMRs() after TTL expiry CacheHit = true, want false")
+	}
+}
+
+// TestFindMRs_differentToolVersionArtifactIsMissAndRefetches is the
+// regression guard for the real incident TZ.md section 4.6 documents: a
+// within-TTL mr_list artifact on disk was written under a query hash
+// that folded in a DIFFERENT tool version than the one this call runs
+// under (as a v0.2.0-written artifact would look to a v0.2.1 binary).
+// That must be a cache miss -- FindMRs must actually call the client and
+// return the fresh fetch's items, never the stale file's -- proving
+// cache.QueryHash's toolVersion is load-bearing, not merely present.
+func TestFindMRs_differentToolVersionArtifactIsMissAndRefetches(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, time.July, 15, 12, 0, 0, 0, time.UTC)
+	at := time.Date(2026, time.March, 10, 12, 0, 0, 0, time.UTC)
+
+	req := FindMRsRequest{
+		GitlabURL: "https://gitlab.example.com",
+		User:      "42",
+		From:      domain.NewDate(2026, time.January, 1),
+		To:        domain.NewDate(2026, time.June, 30),
+		MoreThan:  3,
+		Strict:    true,
+		Dir:       dir,
+		Now:       func() time.Time { return now },
+	}
+
+	// staleQuery mirrors exactly what FindMRs builds internally from req
+	// above (same gitlab_url, resolved numeric user_id, dates, more_than,
+	// no group/project/mr) -- the only difference from what FindMRs hashes
+	// today is the tool version passed to cache.QueryHash.
+	staleQuery := domain.Query{
+		GitlabURL: "https://gitlab.example.com",
+		UserID:    42,
+		From:      req.From,
+		To:        req.To,
+		MoreThan:  req.MoreThan,
+	}
+	staleHash, err := cache.QueryHash(staleQuery, "not-"+ToolVersion)
+	if err != nil {
+		t.Fatalf("cache.QueryHash() error = %v", err)
+	}
+	stalePath, err := artifactPath(dir, artifact.KindMRList, staleHash, artifact.FormatYAML)
+	if err != nil {
+		t.Fatalf("artifactPath() error = %v", err)
+	}
+	staleDoc := artifact.MRList{
+		Header: artifact.Header{
+			Source: artifact.Source{GitlabURL: "https://gitlab.example.com", FetchedAt: now.Add(-time.Minute)},
+		},
+		Query: staleQuery,
+		Items: []artifact.MRItem{{ProjectID: 999, MRIID: 999, CommentCount: 999}},
+	}
+	if err := artifact.WriteMRList(staleDoc, artifact.FormatYAML, stalePath); err != nil {
+		t.Fatalf("WriteMRList() error = %v", err)
+	}
+
+	calls := 0
+	summaries := []gitlab.MergeRequestSummary{
+		{MergeRequest: domain.MergeRequest{ProjectID: 1, IID: 7, CreatedAt: at, UpdatedAt: at}, UserNotesCount: 10},
+	}
+	client := &fakeClient{
+		mergeRequestsFn: func(ctx context.Context, w gitlab.MergeRequestWindow) ([]gitlab.MergeRequestSummary, error) {
+			calls++
+			return summaries, nil
+		},
+		discussionsFn: func(ctx context.Context, project gitlab.ID, mrIID int64) ([]domain.Discussion, error) {
+			return notesFrom(42, 4, at), nil
+		},
+	}
+
+	result, err := FindMRs(context.Background(), client, req)
+	if err != nil {
+		t.Fatalf("FindMRs() error = %v", err)
+	}
+	if result.CacheHit {
+		t.Fatalf("FindMRs() CacheHit = true, want false: a within-TTL artifact written under a different tool version must not count as a hit")
+	}
+	if calls < 1 {
+		t.Errorf("FindMRs() made %d MergeRequests calls, want >= 1: it must actually fetch, not read the stale artifact", calls)
+	}
+	if len(result.Doc.Items) != 1 || result.Doc.Items[0].CommentCount != 4 {
+		t.Fatalf("FindMRs() Items = %+v, want the fresh fetch's one item with comment_count 4, not the stale artifact's", result.Doc.Items)
 	}
 }
 

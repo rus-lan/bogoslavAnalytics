@@ -49,6 +49,16 @@ installed: bogoslav-cli bogoslav-mcp bogoslav-skills
 into: /home/<user>/.local/bin
 ```
 
+Проверить, что реально установилось (а не угадывать по дате файла или лезть в бинарник через `strings ... | grep`): `bogoslav-cli version` (то же самое, слово в слово, печатают `bogoslav-mcp version` и `bogoslav-skills version` — все три бинаря читают версию из одного и того же места, раздел 7.4). `--version` работает как алиас и печатает идентичный вывод.
+
+```
+$ bogoslav-cli version
+version: v0.2.1
+go: go1.25.0
+```
+
+Если вывод начинается с `version: dev-unstable-...` — это не релиз, а сборка из грязного (незакоммиченного) дерева; такое значение уникально для одного запуска процесса и меняется при каждой пересборке, сравнивать его между машинами/запусками бессмысленно.
+
 **Важно про URL: это `github.com/.../releases/download/...`, не `raw.githubusercontent.com`.** Разница не косметическая: у одного реального пользователя `raw.githubusercontent.com` подвисал — корпоративные прокси нередко блокируют именно этот хост отдельно, пропуская при этом GitHub Releases. Release-URL к тому же держит сам скрипт и бинарники на одном хосте. Не меняйте на `raw.githubusercontent.com`, даже если это выглядит как более "прямой" адрес.
 
 Без явного тега в URL и без `BOGOSLAV_VERSION` скрипт резолвит `latest` через redirect `releases/latest` → `releases/tag/<tag>` (без похода в GitHub API и без `jq`, которого может не быть в минимальном CI-образе). Для CI это стоит зафиксировать явно — см. переменные окружения ниже.
@@ -101,7 +111,7 @@ go install github.com/rus-lan/bogoslavAnalytics/cmd/bogoslav-mcp@latest
 go install github.com/rus-lan/bogoslavAnalytics/cmd/bogoslav-skills@latest
 ```
 
-`@latest` берёт самый свежий тег; чтобы закрепиться на конкретной версии — `@v0.2.0` вместо `@latest`.
+`@latest` берёт самый свежий тег; чтобы закрепиться на конкретной версии — `@v0.2.0` вместо `@latest`. Проверить, что `go install` реально положил именно ту версию — тот же `bogoslav-cli version` (раздел 7.4): `runtime/debug.ReadBuildInfo()` в этом случае возвращает точный тег, под которым собран бинарь.
 
 **Бинари появляются в `$GOBIN`**, а если эта переменная не задана — в `$GOPATH/bin` (обычно `~/go/bin`). Этот каталог должен быть в `PATH` — если после успешной установки команда «не находится», в подавляющем большинстве случаев дело именно в этом.
 
@@ -133,12 +143,13 @@ go build -o bin/bogoslav-skills ./cmd/bogoslav-skills
 
 ### Подключение к GitLab
 
-Обе переменные читаются из окружения процесса — и `bogoslav-cli`, и `bogoslav-mcp`:
+Все три переменные читаются из окружения процесса — и `bogoslav-cli`, и `bogoslav-mcp`:
 
 | Переменная | Обязательна | Дефолт |
 |---|---|---|
 | `GITLAB_URL` | нет | `https://gitlab.com` |
 | `GITLAB_TOKEN` | **да** | — (без неё клиент не собирается вообще) |
+| `BOGOSLAV_TIMEOUT` | нет | `2m` (`0` — без таймаута вовсе) |
 
 Требуемый scope токена — **`read_api`**. Не выдавайте токен со scope `api` — он даёт полный read-write доступ (создание, изменение, удаление данных в GitLab), а инструмент делает только `GET`-запросы и в этом не нуждается. Одного `read_user` тоже недостаточно — он покрывает лишь `/user` и часть `/users`-эндпоинтов, а не MR, discussions, projects и groups, которые использует инструмент.
 
@@ -159,6 +170,8 @@ curl -H "PRIVATE-TOKEN: <read_api-токен>" "https://<host>/api/v4/users/<id>
 ```
 Error: connect to GitLab: gitlab: new client from env: gitlab: GITLAB_TOKEN is not set
 ```
+
+**Таймаут запроса.** Каждый исходящий HTTP-запрос к GitLab (одна страница листинга, один вызов `/discussions` — не весь прогон команды целиком) ограничен по времени: дефолт `2m`, достаточно щедрый для медленного self-managed инстанса под нагрузкой, но конечный — по-настоящему зависшее соединение не будет ждать бесконечно. Настраивается через `BOGOSLAV_TIMEOUT` (переменная окружения, действует и на `bogoslav-cli`, и на `bogoslav-mcp`) или через флаг `--timeout` на `find-mrs`, `get-comments` и `filter-comments` — трёх командах `bogoslav-cli`, которые вообще ходят в GitLab; явный `--timeout` перекрывает `BOGOSLAV_TIMEOUT`. `"0"`/`"0s"` отключает таймаут полностью — для того, кто действительно готов ждать, сколько бы ни отвечал GitLab. `bogoslav-mcp` — долгоживущий процесс без CLI-флагов, поэтому там `BOGOSLAV_TIMEOUT` нужно выставлять до старта.
 
 **Важное предупреждение про reverse-proxy.** `--group`/`--project` принимают либо numeric id, либо путь (`my-group/my-repo`, в том числе вложенные подгруппы). Путь идёт в запрос URL-кодированным (`/` → `%2F`), как того требует сам GitLab. Если перед GitLab стоит обратный прокси (например, Apache), который декодирует `%2F` обратно в `/` до того, как запрос дойдёт до GitLab, — путь превращается в невалидный URL, и GitLab отвечает `404`, хотя группа/проект существуют. Это задокументированная ловушка самого GitLab, не баг этого инструмента. Обходной путь — передавать **numeric id** вместо пути: числовые id этой проблеме не подвержены.
 
@@ -212,6 +225,7 @@ bogoslav-cli [command]
 | `--refresh` | `false` | игнорировать кеш |
 | `--format` | `yaml` | `json`/`yaml`/`text`/`html` |
 | `--out` | — | записать результат в этот файл вместо stdout (не вдобавок) |
+| `--timeout` | `BOGOSLAV_TIMEOUT` или `2m` | дедлайн одного запроса к GitLab; `0s` отключает его |
 
 **Обязательны на самом деле только `--user`, `--from`, `--to`.** `--more-than` выглядит рядом с ними как ещё один обязательный флаг, но это не так: если его не передать, действует дефолт `0`, и команда отработает без единой ошибки. `--more-than 0` — не заглушка, а осмысленный запрос: «любой MR, где `--user` оставил хотя бы один комментарий». Если вы забыли флаг, ожидая увидеть только MR с несколькими комментариями, результат не предупредит об этом — он просто окажется куда шире, чем предполагалось.
 
@@ -252,6 +266,7 @@ smoke: passed
 | `--refresh` | `false` | |
 | `--format` | `yaml` | |
 | `--out` | — | |
+| `--timeout` | `BOGOSLAV_TIMEOUT` или `2m` | дедлайн одного `/discussions`-вызова; `0s` отключает его |
 
 **Важно**: у `find-mrs` флаг `--project` принимает numeric id **или путь** (строка). У `get-comments` флаг с тем же именем `--project` — **только numeric id** (тип `int64`, а не строка). Это не опечатка и не баг — одно и то же имя флага имеет разный тип на разных командах, потому что `get-comments` строит явный список `(project_id, mr_iid)` напрямую, без резолва пути.
 
@@ -368,6 +383,7 @@ Error: save-labels: save labels: classify: labeling result rejected (2 problem(s
 | `--artifacts-dir` | `artifacts` | |
 | `--format` | `yaml` | |
 | `--out` | — | |
+| `--timeout` | `BOGOSLAV_TIMEOUT` или `2m` | дедлайн запроса, только когда `--group`/`--project` реально идут в GitLab; `0s` отключает его |
 
 У `filter-comments` **нет** `--cache-ttl`/`--refresh`: команда никогда не проверяет кеш перед запуском, всегда читает `--from-artifact` заново и пересчитывает результат.
 
@@ -469,6 +485,8 @@ smoke:
 
 **`GITLAB_TOKEN` нужен при старте всегда**, даже если конкретная сессия ни разу не спросит `find_mrs`/`get_comments`. Сервер собирает GitLab-клиент один раз при запуске, до регистрации тулов, — без токена процесс завершается сразу с ошибкой в stderr и кодом выхода 1, ещё до того, как агент успевает вызвать хоть один тул. Из шести тулов реально ходят в GitLab не все: `find_mrs` и `get_comments` — всегда; `filter_comments` — только если передан `--group`/`--project` (для резолва путей в numeric id); `get_classify_batch`, `save_labels` и `get_stats` в GitLab не ходят никогда. Но заводится сервер одинаково для всех шести — по конструкции, без токена он не запустится вообще.
 
+**`BOGOSLAV_TIMEOUT` тоже читается один раз при старте**, в тот же клиент, что обслуживает все шесть тулов — `bogoslav-mcp` не имеет CLI-флагов, поэтому это единственный способ настроить дедлайн запроса для MCP-сервера (в отличие от `bogoslav-cli`, где то же самое доступно и как `--timeout`, раздел 3). Дефолт `2m`, `"0"` отключает дедлайн полностью — см. раздел «Подключение к GitLab» выше.
+
 ### Как этим пользоваться
 
 После `bogoslav-skills install --target <tool>` (раздел 5) агентский инструмент получает сразу оба: `SKILL.md` (описание тех же шести операций, которое агент подхватывает как собственный контекст) и регистрацию MCP-сервера `bogoslav-mcp` (шесть тулов из таблицы выше). Дальше с инструментом не нужно говорить командами: пишете обычным текстом, а какой тул вызвать и с какими параметрами — решает сам агент по описаниям тулов и содержимому `SKILL.md`.
@@ -548,6 +566,7 @@ bogoslav-skills install --all
 | `--all` | `false` | поставить для всех целей разом |
 | `--project-dir` | `.` | куда ставить |
 | `--mcp-command` | автоопределение рядом с `bogoslav-skills`, иначе `bogoslav-mcp` из `PATH` | путь к бинарю `bogoslav-mcp`, который пропишется в конфиг |
+| `--mcp-timeout` | `1h` | per-call MCP-таймаут, записывается для целей, чей формат его поддерживает (claude, opencode, kilo) — раздел «MCP-таймаут» ниже |
 | `--dry-run` | `false` | показать, что изменится, ничего не записывая |
 
 Пять живых целей: **claude, opencode, kilo, cline, cursor**. Для каждой: `SKILL.md` в оба каталога (`.claude/skills/bogoslav/` и `.agents/skills/bogoslav/`) плюс регистрация MCP-сервера `bogoslav` в **собственном файле конфигурации той цели**. Существующий конфиг **мёржится, не перезаписывается**: чужие MCP-серверы и прочие ключи выживают, добавляется/обновляется только запись `bogoslav`. Для `kilo.jsonc` мёрж — JSONC-aware: проверено вживую — исходные комментарии пользователя и посторонний сервер (`other-server`) в файле остались нетронутыми, добавилась только запись `bogoslav`. Байты вокруг вставки не двигаются — это осознанная цена мёржа: сама вставленная запись **не** получает красивое форматирование, как в примере ниже. В реальности она приезжает на той же строке, что и последний существующий ключ (`,"bogoslav":{`), с чужим, неподходящим отступом. Пример ниже показан в отформатированном виде для читаемости, а не как побайтовый вывод:
@@ -569,22 +588,27 @@ create .claude/skills/bogoslav/SKILL.md
 create .agents/skills/bogoslav/SKILL.md
 create .mcp.json
 note: the merged entry's env/environment block is empty; bogoslav-mcp reads GITLAB_URL and GITLAB_TOKEN from its own process environment, so whatever spawns it needs to already have them set (or add them to that block yourself)
+note: wrote a 1h0m0s (3600000ms) per-call MCP timeout into the merged entry; raise it with --mcp-timeout for an even slower GitLab instance
 unchanged .claude/skills/bogoslav/SKILL.md
 unchanged .agents/skills/bogoslav/SKILL.md
 create opencode.json
 note: the merged entry's env/environment block is empty; bogoslav-mcp reads GITLAB_URL and GITLAB_TOKEN from its own process environment, so whatever spawns it needs to already have them set (or add them to that block yourself)
+note: wrote a 1h0m0s (3600000ms) per-call MCP timeout into the merged entry; raise it with --mcp-timeout for an even slower GitLab instance
 unchanged .claude/skills/bogoslav/SKILL.md
 unchanged .agents/skills/bogoslav/SKILL.md
 create kilo.jsonc
 note: the merged entry's env/environment block is empty; bogoslav-mcp reads GITLAB_URL and GITLAB_TOKEN from its own process environment, so whatever spawns it needs to already have them set (or add them to that block yourself)
+note: wrote a 1h0m0s (3600000ms) per-call MCP timeout into the merged entry; raise it with --mcp-timeout for an even slower GitLab instance
 unchanged .claude/skills/bogoslav/SKILL.md
 unchanged .agents/skills/bogoslav/SKILL.md
 create /home/<user>/.cline/mcp.json
 note: the merged entry's env/environment block is empty; bogoslav-mcp reads GITLAB_URL and GITLAB_TOKEN from its own process environment, so whatever spawns it needs to already have them set (or add them to that block yourself)
+note: cline has no documented MCP per-call timeout field, so bogoslav-skills did not write one; its own client-side deadline cannot be raised from here -- narrow the query with --group/--project instead of an instance-wide search, or check whether cline's own settings expose a longer timeout
 unchanged .claude/skills/bogoslav/SKILL.md
 unchanged .agents/skills/bogoslav/SKILL.md
 create .cursor/mcp.json
 note: the merged entry's env/environment block is empty; bogoslav-mcp reads GITLAB_URL and GITLAB_TOKEN from its own process environment, so whatever spawns it needs to already have them set (or add them to that block yourself)
+note: cursor has no documented MCP per-call timeout field, so bogoslav-skills did not write one; its own client-side deadline cannot be raised from here -- narrow the query with --group/--project instead of an instance-wide search, or check whether cursor's own settings expose a longer timeout
 create CONVENTIONS.md
 aider does not read CONVENTIONS.md on its own -- point aider at it with
 either:
@@ -593,9 +617,28 @@ or add to .aider.conf.yml:
   read: [CONVENTIONS.md]
 ```
 
-Каждая из пяти MCP-целей заново пишет `SKILL.md` — но только первая по счёту реально его создаёт (`create`), остальные четыре видят уже написанный на этом прогоне файл и печатают `unchanged` (отсюда восемь строк `unchanged` и пять повторов строки `note:`, по одной на каждую MCP-цель). Хвост про `aider --read` — не часть MCP-цикла, а отдельный, шестой проход `install --all` по aider.
+Каждая из пяти MCP-целей заново пишет `SKILL.md` — но только первая по счёту реально его создаёт (`create`), остальные четыре видят уже написанный на этом прогоне файл и печатают `unchanged` (отсюда восемь строк `unchanged` и пять повторов пары `note:` строк, по паре на каждую MCP-цель — вторая строка либо про записанный таймаут, либо, для cline/cursor, про его отсутствие; раздел «MCP-таймаут» ниже объясняет разницу). Хвост про `aider --read` — не часть MCP-цикла, а отдельный, шестой проход `install --all` по aider.
 
 Обратите внимание: Cline получает файл **вне** `--project-dir` — `~/.cline/mcp.json` документирован как глобальный, не проектный, и `bogoslav-skills` следует этому.
+
+### MCP-таймаут: что чинится из конфига, а что нет
+
+На медленном self-managed GitLab `find-mrs` в режиме `bruteforce` — это листание всех страниц merge requests (в отчёте, который привёл к этому разделу, 28 страниц) плюс один вызов `/discussions` на каждого кандидата, пережившего пре-фильтр (раздел 3.7). Один вызов тула `find_mrs` от этого легитимно может идти долго. Дедлайн для одного вызова тула ставит **клиентский инструмент** (opencode, claude, kilo, cline, cursor), а не `bogoslav-mcp` — сервер физически не может поднять чужой таймаут. Единственный рычаг, который есть у `bogoslav-skills`: если формат конфига конкретной цели документирует поле таймаута, записать туда щедрое значение при `install`.
+
+Из пяти живых целей это удалось подтвердить для **трёх**: `claude`, `opencode`, `kilo`. Для них `install` пишет `--mcp-timeout` (по умолчанию `1h`, то есть 3 600 000 мс) как ключ `timeout` прямо в ту же запись сервера — в миллисекундах, той единицей, которую документирует каждый из трёх форматов:
+
+| Цель | Что происходит с таймаутом |
+|---|---|
+| claude | `.mcp.json`'s `timeout` — жёсткий предел на вызов тула, но для stdio-серверов практический лимит на деле другой: отдельный idle-таймаут (нет ответа И нет progress-нотификации) на 30 минут по умолчанию. Ключ `timeout` ≥ 1000мс поднимает именно этот idle-предел — `bogoslav-mcp` не шлёт progress-нотификаций, так что щедрый `timeout` — единственный способ пережить долгий вызов |
+| opencode | `mcp.<name>.timeout` — доки называют его таймаутом получения списка тулов (5с по умолчанию), но сама JSON Schema конфига описывает то же поле шире, как таймаут MCP-запросов вообще; писать щедрое значение безопасно в обоих случаях |
+| kilo | `mcp.<name>.timeout`, та же форма, что у opencode; собственный раздел доков Kilo «Network Timeout» называет дефолт 10-15 секунд для этого же ключа |
+
+**Для `cline` и `cursor` — честно: нет.** Ни один из двух ничего подобного не документирует: доки Cline лишь упоминают в UI действие «set request timeouts» без имени ключа, единицы или примера в конфиге; доки Cursor не показывают поле `timeout` вовсе ни в одном примере. Писать непроверенный ключ в чужой конфиг значило бы имитировать починку, поэтому `bogoslav-skills` туда ничего не пишет — и говорит об этом прямо в stderr (`note: cline has no documented MCP per-call timeout field, ...`), а не молчит. Если у вас именно `cline` или `cursor` и таймаут всё ещё происходит:
+
+- сузьте запрос `--group`/`--project` вместо инстанс-широкого поиска — это не листает весь GitLab и на порядок дешевле по числу вызовов, чем `bruteforce` без области видимости;
+- проверьте настройки самого инструмента — возможно, там есть свой способ поднять таймаут, просто не через файл конфига MCP-сервера, который умеет писать `bogoslav-skills`.
+
+Флаг `--mcp-timeout` перекрывает дефолт (`bogoslav-skills install --target claude --mcp-timeout 2h` для ещё более медленного инстанса); ноль или отрицательное значение отклоняются с ошибкой.
 
 ### Шестая цель — деградация, не полноценная поддержка
 

@@ -2,6 +2,7 @@ package clitree
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -20,6 +21,7 @@ type findMRsFlags struct {
 	project  string
 	mr       int64
 	strict   bool
+	timeout  time.Duration
 
 	out   commonOutputFlags
 	cache cacheFlags
@@ -81,6 +83,7 @@ func registerFindMRsFlags(cmd *cobra.Command, flags *findMRsFlags) {
 
 	addCommonOutputFlags(cmd, &flags.out, formatFourKinds, dirCachedRefresh)
 	addCacheFlags(cmd, &flags.cache)
+	addTimeoutFlag(cmd, &flags.timeout)
 }
 
 // newFindMRsRequest converts flags into an app.FindMRsRequest. It makes
@@ -133,7 +136,11 @@ func runFindMRs(cmd *cobra.Command, flags findMRsFlags) error {
 		return err
 	}
 
-	client, err := newGitlabClient()
+	opts, err := timeoutOption(cmd, flags.timeout)
+	if err != nil {
+		return err
+	}
+	client, err := newGitlabClient(opts...)
 	if err != nil {
 		return err
 	}

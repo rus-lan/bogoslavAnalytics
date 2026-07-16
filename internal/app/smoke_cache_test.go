@@ -181,7 +181,7 @@ func TestCachingSmokeClient_malformedEntryIsCleanExtraCall(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Date(2026, time.July, 15, 12, 0, 0, 0, time.UTC)
 
-	hash, err := cache.Hash(map[string]any{"gitlab_url": "https://gitlab.example.com", "user_id": int64(42)})
+	hash, err := cache.Hash(map[string]any{"gitlab_url": "https://gitlab.example.com", "user_id": int64(42), "tool_version": ToolVersion})
 	if err != nil {
 		t.Fatalf("cache.Hash() error = %v", err)
 	}
@@ -211,5 +211,78 @@ func TestCachingSmokeClient_malformedEntryIsCleanExtraCall(t *testing.T) {
 	}
 	if underlying.smokeTestCalls != 1 {
 		t.Errorf("SmokeTest() made %d calls for a malformed entry, want 1 (clean extra call, not an error)", underlying.smokeTestCalls)
+	}
+}
+
+// TestCachingSmokeClient_differentToolVersionEntryIsMissAndProbesAgain
+// is the regression guard for smoke_cache.go's own tool_version fold-in
+// (see SmokeTest's doc comment): a within-TTL entry written under a
+// DIFFERENT tool version must not answer as a cache hit -- SmokeTest
+// must probe the underlying client again, not read the stale verdict.
+//
+// Both writes below go through the real cachingSmokeClient.SmokeTest
+// call, only changing the package-level ToolVersion var in between --
+// deliberately, not by hand-building a hash with a literal
+// "tool_version" key the way the malformed-entry test above does. That
+// makes this test load-bearing against BOTH ways SmokeTest's own
+// tool_version fold-in could regress: dropping the key from the hashed
+// map entirely, or keeping the key but no longer feeding it the real
+// ToolVersion. Either regression makes both calls below hash identically
+// and this test fails; verified directly (not assumed) by temporarily
+// removing SmokeTest's "tool_version": ToolVersion line during this
+// task and confirming this exact test failed, then restoring it.
+func TestCachingSmokeClient_differentToolVersionEntryIsMissAndProbesAgain(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, time.July, 15, 12, 0, 0, 0, time.UTC)
+	opts := cache.Options{Dir: dir, TTL: cache.DefaultTTL}
+
+	savedVersion := ToolVersion
+	defer func() { ToolVersion = savedVersion }()
+
+	// First write: an older tool version's binary probes and caches
+	// SmokeFailed.
+	ToolVersion = "v-before"
+	staleClient := &fakeClient{
+		smokeTestFn: func(ctx context.Context, userID int64) (domain.SmokeResult, error) {
+			return domain.SmokeFailed, nil
+		},
+	}
+	staleWrapped := &cachingSmokeClient{
+		Client:    staleClient,
+		gitlabURL: "https://gitlab.example.com",
+		opts:      opts,
+		now:       func() time.Time { return now.Add(-time.Minute) },
+	}
+	if _, err := staleWrapped.SmokeTest(context.Background(), 42); err != nil {
+		t.Fatalf("SmokeTest() stale-write call error = %v", err)
+	}
+
+	// Second call: a newer tool version's binary, same gitlab_url and
+	// user_id, well within TTL of the write above. Its own fresh probe
+	// returns SmokePassed -- any answer other than SmokePassed, or zero
+	// calls to the underlying client, proves the stale SmokeFailed entry
+	// leaked through as a hit.
+	ToolVersion = "v-after"
+	freshClient := &fakeClient{
+		smokeTestFn: func(ctx context.Context, userID int64) (domain.SmokeResult, error) {
+			return domain.SmokePassed, nil
+		},
+	}
+	freshWrapped := &cachingSmokeClient{
+		Client:    freshClient,
+		gitlabURL: "https://gitlab.example.com",
+		opts:      opts,
+		now:       func() time.Time { return now },
+	}
+
+	result, err := freshWrapped.SmokeTest(context.Background(), 42)
+	if err != nil {
+		t.Fatalf("SmokeTest() error = %v", err)
+	}
+	if result != domain.SmokePassed {
+		t.Errorf("SmokeTest() = %q, want %q: a within-TTL entry written under a different tool version must not answer as a hit", result, domain.SmokePassed)
+	}
+	if freshClient.smokeTestCalls != 1 {
+		t.Errorf("SmokeTest() made %d calls to the underlying client, want 1 (must probe again, not read the stale entry)", freshClient.smokeTestCalls)
 	}
 }

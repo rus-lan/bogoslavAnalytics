@@ -67,6 +67,26 @@ func ResolveUser(ctx context.Context, resolver UserResolver, user string) (int64
 // by opts.TTL (default cache.DefaultTTL, 24h) -- and escapable the same
 // way -- the --refresh flag forces a miss -- but neither of those fixes
 // it, they only bound how long it can go unnoticed.
+// This cache's key -- {gitlab_url, username} -- deliberately does NOT
+// fold in ToolVersion, unlike cache.QueryHash (find_mrs.go) and
+// cachingSmokeClient's own key (smoke_cache.go). The two that do fold
+// it in are caching OUR OWN interpretation of GitLab's data: QueryHash's
+// artifact-1 caches the search strategy's candidate list under a
+// >MoreThan predicate WE compute, and cachingSmokeClient caches a
+// SmokeResult verdict WE compute by comparing event and discussion
+// counts -- both have already had a real bug, fixed in a later release,
+// that a stale cache entry would otherwise keep answering with after
+// the fix shipped (TZ.md sections 4.6, 5.5). A resolved username IS
+// NOT that: "what numeric id does username X have on this GitLab
+// instance" is a single fact GitLab's own database owns, fetched with
+// one plain `GET /users?username=X` call and no interpretation of ours
+// in between -- upgrading bogoslav past a release that fixed some other
+// query's semantics does not change what that fact was. This cache
+// entry can still go stale, but only for the reason its own hazard
+// note above already documents (a username getting renamed and
+// re-claimed) -- not for the reason ToolVersion exists to guard
+// against, so ToolVersion would add cache turnover here with no
+// matching correctness benefit.
 func ResolveUserCached(ctx context.Context, resolver UserResolver, gitlabURL, user string, opts cache.Options, now time.Time) (int64, error) {
 	if n, ok := parseNumericID(user); ok {
 		return n, nil

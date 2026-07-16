@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/rus-lan/bogoslavAnalytics/internal/artifact"
+	"github.com/rus-lan/bogoslavAnalytics/internal/cache"
 	"github.com/rus-lan/bogoslavAnalytics/internal/domain"
 	"github.com/rus-lan/bogoslavAnalytics/internal/gitlab"
 )
@@ -476,6 +477,80 @@ func TestGetComments_numericUserMakesNoResolveCalls(t *testing.T) {
 	}
 	if client.resolveUserIDCalls != 0 {
 		t.Errorf("GetComments() with numeric user made %d ResolveUserID calls, want 0", client.resolveUserIDCalls)
+	}
+}
+
+// TestGetComments_differentToolVersionArtifactIsMissAndRefetches is the
+// regression guard for GetComments's own tool_version fold-in (GAP 1,
+// TZ.md section 4.6): a within-TTL comment_list artifact on disk,
+// written under a query hash that folded in a DIFFERENT tool version
+// than the one this call runs under, must be a cache miss --
+// GetComments must actually call Discussions again and return the
+// fresh fetch's items, never the stale file's. Mirrors
+// find_mrs_test.go's TestFindMRs_differentToolVersionArtifactIsMissAndRefetches
+// for artifact-1, one call site over.
+func TestGetComments_differentToolVersionArtifactIsMissAndRefetches(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, time.July, 15, 12, 0, 0, 0, time.UTC)
+	at := time.Date(2026, time.March, 10, 12, 0, 0, 0, time.UTC)
+
+	req := GetCommentsRequest{
+		GitlabURL: "https://gitlab.example.com",
+		User:      "42",
+		From:      domain.NewDate(2026, time.January, 1),
+		To:        domain.NewDate(2026, time.June, 30),
+		MRs:       []artifact.MRRef{{ProjectID: 1, MRIID: 7}},
+		Dir:       dir,
+		Now:       func() time.Time { return now },
+	}
+
+	// staleQuery mirrors exactly what GetComments builds internally from
+	// req above (same resolved numeric user_id, dates, explicit MR list,
+	// no from_artifact) -- the only difference from what GetComments
+	// hashes today is the tool version folded into the hash.
+	staleQuery := artifact.CommentQuery{
+		UserID: 42,
+		From:   req.From,
+		To:     req.To,
+		MRs:    req.MRs,
+	}
+	staleHash, err := cache.HashWithToolVersion(staleQuery, "not-"+ToolVersion)
+	if err != nil {
+		t.Fatalf("cache.HashWithToolVersion() error = %v", err)
+	}
+	stalePath, err := artifactPath(dir, artifact.KindCommentList, staleHash, artifact.FormatYAML)
+	if err != nil {
+		t.Fatalf("artifactPath() error = %v", err)
+	}
+	staleDoc := artifact.CommentList{
+		Header: artifact.Header{
+			Source: artifact.Source{GitlabURL: "https://gitlab.example.com", FetchedAt: now.Add(-time.Minute)},
+		},
+		Query: staleQuery,
+		Items: []artifact.CommentItem{{MRIID: 999, Note: note(999, 42, false, at)}},
+	}
+	if err := artifact.WriteCommentList(staleDoc, artifact.FormatYAML, stalePath); err != nil {
+		t.Fatalf("WriteCommentList() error = %v", err)
+	}
+
+	client := &fakeDiscussionsClient{
+		discussionsFn: func(ctx context.Context, project gitlab.ID, mrIID int64) ([]domain.Discussion, error) {
+			return []domain.Discussion{discussion("d", note(1, 42, false, at))}, nil
+		},
+	}
+
+	result, err := GetComments(context.Background(), client, req)
+	if err != nil {
+		t.Fatalf("GetComments() error = %v", err)
+	}
+	if result.CacheHit {
+		t.Fatalf("GetComments() CacheHit = true, want false: a within-TTL artifact written under a different tool version must not count as a hit")
+	}
+	if client.calls < 1 {
+		t.Errorf("GetComments() made %d Discussions calls, want >= 1: it must actually fetch, not read the stale artifact", client.calls)
+	}
+	if len(result.Doc.Items) != 1 || result.Doc.Items[0].ID != 1 {
+		t.Fatalf("GetComments() Items = %+v, want the fresh fetch's one item with id 1, not the stale artifact's", result.Doc.Items)
 	}
 }
 

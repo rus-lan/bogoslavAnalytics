@@ -2,6 +2,7 @@ package clitree
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -19,6 +20,7 @@ type getCommentsFlags struct {
 	fromArtifact string
 	project      int64
 	mrs          []int64
+	timeout      time.Duration
 
 	out   commonOutputFlags
 	cache cacheFlags
@@ -76,6 +78,7 @@ func registerGetCommentsFlags(cmd *cobra.Command, flags *getCommentsFlags) {
 
 	addCommonOutputFlags(cmd, &flags.out, formatFourKinds, dirCachedRefresh)
 	addCacheFlags(cmd, &flags.cache)
+	addTimeoutFlag(cmd, &flags.timeout)
 }
 
 // buildMRRefs turns --project and --mr into the explicit merge request
@@ -140,7 +143,11 @@ func newGetCommentsRequest(cmd *cobra.Command, flags getCommentsFlags, gitlabURL
 // renders the result. --user resolution (TZ.md section 5.0) is
 // app.GetComments's own job, not runGetComments's.
 func runGetComments(cmd *cobra.Command, flags getCommentsFlags) error {
-	client, err := newGitlabClient()
+	opts, err := timeoutOption(cmd, flags.timeout)
+	if err != nil {
+		return err
+	}
+	client, err := newGitlabClient(opts...)
 	if err != nil {
 		return err
 	}

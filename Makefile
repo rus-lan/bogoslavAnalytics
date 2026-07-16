@@ -1,10 +1,25 @@
 .PHONY: build test lint fmt contracts dist
 
+# VERSION feeds internal/app.ToolVersion (version.go) at link time, via
+# LDFLAGS below -- so a release build always carries its own real
+# version automatically, with nobody bumping a constant by hand for
+# `make build`/`make dist` (TZ.md section 4.6). `--always` falls back to
+# a bare abbreviated commit hash if the checkout has no tags at all,
+# rather than failing; `--dirty` marks a checkout with uncommitted
+# changes, which internal/app.resolveToolVersion (version.go) treats as
+# unidentifiable on purpose, never as a stable version of its own.
+# Redirected to /dev/null so a checkout with no .git at all (e.g. a
+# source tarball) degrades to an empty $(VERSION) instead of printing
+# git's error to the build log; version.go's own fallback chain already
+# handles an empty ldflags value.
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null)
+LDFLAGS := -ldflags "-X github.com/rus-lan/bogoslavAnalytics/internal/app.toolVersionLdflags=$(VERSION)"
+
 build:
 	mkdir -p bin
-	go build -o bin/bogoslav-cli ./cmd/bogoslav-cli
-	go build -o bin/bogoslav-mcp ./cmd/bogoslav-mcp
-	go build -o bin/bogoslav-skills ./cmd/bogoslav-skills
+	go build $(LDFLAGS) -o bin/bogoslav-cli ./cmd/bogoslav-cli
+	go build $(LDFLAGS) -o bin/bogoslav-mcp ./cmd/bogoslav-mcp
+	go build $(LDFLAGS) -o bin/bogoslav-skills ./cmd/bogoslav-skills
 
 # dist cross-compiles the three CLI binaries for every platform the
 # curl|sh installer supports and writes plain (uncompressed, untarred)
@@ -40,7 +55,10 @@ build:
 # -trimpath removes build-machine absolute paths from the binary so
 # the same source built on two different machines/checkouts produces
 # identical output. -ldflags="-s -w" drops the symbol table and DWARF
-# debug info, cutting binary size roughly in half.
+# debug info, cutting binary size roughly in half; the -X piece appended
+# to it below bakes in $(VERSION) the same way `build`'s LDFLAGS does,
+# combined into one -ldflags argument since the flag can only be passed
+# once per `go build` invocation.
 BINARIES := bogoslav-cli bogoslav-mcp bogoslav-skills
 PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
 DIST := dist
@@ -54,7 +72,7 @@ dist:
 		for bin in $(BINARIES); do \
 			out=$(DIST)/$${bin}_$${os}_$${arch}; \
 			echo "building $$out"; \
-			CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags="-s -w" -o $$out ./cmd/$$bin; \
+			CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags="-s -w -X github.com/rus-lan/bogoslavAnalytics/internal/app.toolVersionLdflags=$(VERSION)" -o $$out ./cmd/$$bin; \
 		done; \
 	done
 	@cd $(DIST) && (sha256sum * > SHA256SUMS 2>/dev/null || shasum -a 256 * > SHA256SUMS)

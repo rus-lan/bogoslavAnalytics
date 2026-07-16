@@ -27,6 +27,12 @@ func TestCanonicalJSON_sortsKeysLexicographically(t *testing.T) {
 	}
 }
 
+// testToolVersion is the toolVersion argument every QueryHash call below
+// uses unless a test is specifically exercising toolVersion itself: the
+// tests in this file are about the rest of the hashed object, so they
+// all fix toolVersion to one value and never let it vary by accident.
+const testToolVersion = "v-test"
+
 // buildQuery is the base normalized query fixture shared by the hash
 // tests below.
 func buildQuery() domain.Query {
@@ -109,13 +115,13 @@ func TestQueryHash_deterministic_acrossFieldOrder(t *testing.T) {
 		}
 	}
 
-	want, err := QueryHash(buildA())
+	want, err := QueryHash(buildA(), testToolVersion)
 	if err != nil {
 		t.Fatalf("QueryHash() error = %v", err)
 	}
 
 	for i := 0; i < 200; i++ {
-		got, err := QueryHash(buildB())
+		got, err := QueryHash(buildB(), testToolVersion)
 		if err != nil {
 			t.Fatalf("QueryHash() error on iteration %d: %v", i, err)
 		}
@@ -127,7 +133,7 @@ func TestQueryHash_deterministic_acrossFieldOrder(t *testing.T) {
 
 func TestQueryHash_sensitiveToChanges(t *testing.T) {
 	base := buildQuery()
-	baseHash, err := QueryHash(base)
+	baseHash, err := QueryHash(base, testToolVersion)
 	if err != nil {
 		t.Fatalf("QueryHash(base) error = %v", err)
 	}
@@ -180,7 +186,7 @@ func TestQueryHash_sensitiveToChanges(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := QueryHash(tc.build())
+			got, err := QueryHash(tc.build(), testToolVersion)
 			if err != nil {
 				t.Fatalf("QueryHash() error = %v", err)
 			}
@@ -205,11 +211,11 @@ func TestQueryHash_omittedOptionalParams(t *testing.T) {
 		explicitEmpty := buildQuery()
 		explicitEmpty.Group = ""
 
-		got1, err := QueryHash(omitted)
+		got1, err := QueryHash(omitted, testToolVersion)
 		if err != nil {
 			t.Fatalf("QueryHash() error = %v", err)
 		}
-		got2, err := QueryHash(explicitEmpty)
+		got2, err := QueryHash(explicitEmpty, testToolVersion)
 		if err != nil {
 			t.Fatalf("QueryHash() error = %v", err)
 		}
@@ -224,11 +230,11 @@ func TestQueryHash_omittedOptionalParams(t *testing.T) {
 		set := buildQuery()
 		set.Group = "my-group"
 
-		gotOmitted, err := QueryHash(omitted)
+		gotOmitted, err := QueryHash(omitted, testToolVersion)
 		if err != nil {
 			t.Fatalf("QueryHash() error = %v", err)
 		}
-		gotSet, err := QueryHash(set)
+		gotSet, err := QueryHash(set, testToolVersion)
 		if err != nil {
 			t.Fatalf("QueryHash() error = %v", err)
 		}
@@ -245,11 +251,11 @@ func TestQueryHash_omittedOptionalParams(t *testing.T) {
 		explicitZeroMR := buildQuery()
 		explicitZeroMR.MR = &zero
 
-		gotNil, err := QueryHash(nilMR)
+		gotNil, err := QueryHash(nilMR, testToolVersion)
 		if err != nil {
 			t.Fatalf("QueryHash() error = %v", err)
 		}
-		gotZero, err := QueryHash(explicitZeroMR)
+		gotZero, err := QueryHash(explicitZeroMR, testToolVersion)
 		if err != nil {
 			t.Fatalf("QueryHash() error = %v", err)
 		}
@@ -271,15 +277,146 @@ func TestQueryHash_excludesStrategyAndSmoke(t *testing.T) {
 	resolved.Strategy = domain.StrategyEvents
 	resolved.Smoke = domain.SmokePassed
 
-	gotUnresolved, err := QueryHash(unresolved)
+	gotUnresolved, err := QueryHash(unresolved, testToolVersion)
 	if err != nil {
 		t.Fatalf("QueryHash() error = %v", err)
 	}
-	gotResolved, err := QueryHash(resolved)
+	gotResolved, err := QueryHash(resolved, testToolVersion)
 	if err != nil {
 		t.Fatalf("QueryHash() error = %v", err)
 	}
 	if gotUnresolved != gotResolved {
 		t.Errorf("QueryHash() = %s and %s, want equal regardless of Strategy/Smoke", gotUnresolved, gotResolved)
+	}
+}
+
+// TestQueryHash_changingToolVersionMisses is the regression guard for
+// the real incident TZ.md section 4.6 documents: v0.2.0 built its
+// bruteforce list requests without scope=all and silently came back with
+// items: [] for MRs the token owner did not author; v0.2.1 fixed the
+// request. Without toolVersion in the hashed object, an artifact a
+// v0.2.0 binary wrote for a query would answer a v0.2.1 binary's
+// identical query for the rest of the TTL. Every domain.Query field here
+// is identical between the two calls -- only toolVersion differs -- so
+// this fails if toolVersion is ever dropped from the hashed object.
+func TestQueryHash_changingToolVersionMisses(t *testing.T) {
+	q := buildQuery()
+
+	gotOld, err := QueryHash(q, "v0.2.0")
+	if err != nil {
+		t.Fatalf("QueryHash() error = %v", err)
+	}
+	gotNew, err := QueryHash(q, "v0.2.1")
+	if err != nil {
+		t.Fatalf("QueryHash() error = %v", err)
+	}
+	if gotOld == gotNew {
+		t.Errorf("QueryHash() = %s, want different hash when tool version changes (same query, v0.2.0 vs v0.2.1)", gotNew)
+	}
+}
+
+// commentQueryFixture is a small stand-in for the shape
+// HashWithToolVersion is meant for -- artifact.CommentQuery, without
+// importing artifact/ from this package (cache/ never imports
+// artifact/, TZ.md section 2.4): a plain struct with normal json tags,
+// no fields needing exclusion from the hash.
+type commentQueryFixture struct {
+	UserID int64    `json:"user_id"`
+	MRs    []string `json:"mrs,omitempty"`
+}
+
+func TestHashWithToolVersion_deterministic(t *testing.T) {
+	build := func() commentQueryFixture {
+		return commentQueryFixture{UserID: 42, MRs: []string{"a", "b"}}
+	}
+
+	want, err := HashWithToolVersion(build(), "v1")
+	if err != nil {
+		t.Fatalf("HashWithToolVersion() error = %v", err)
+	}
+	for i := 0; i < 50; i++ {
+		got, err := HashWithToolVersion(build(), "v1")
+		if err != nil {
+			t.Fatalf("HashWithToolVersion() error on iteration %d: %v", i, err)
+		}
+		if got != want {
+			t.Fatalf("HashWithToolVersion() nondeterministic on iteration %d: got %s, want %s", i, got, want)
+		}
+	}
+}
+
+// TestHashWithToolVersion_changingToolVersionMisses is
+// HashWithToolVersion's own version of
+// TestQueryHash_changingToolVersionMisses, for the generic helper
+// rather than QueryHash's hand-built object: the same value must hash
+// differently when only toolVersion changes.
+func TestHashWithToolVersion_changingToolVersionMisses(t *testing.T) {
+	v := commentQueryFixture{UserID: 42, MRs: []string{"a", "b"}}
+
+	gotOld, err := HashWithToolVersion(v, "v0.2.0")
+	if err != nil {
+		t.Fatalf("HashWithToolVersion() error = %v", err)
+	}
+	gotNew, err := HashWithToolVersion(v, "v0.2.1")
+	if err != nil {
+		t.Fatalf("HashWithToolVersion() error = %v", err)
+	}
+	if gotOld == gotNew {
+		t.Errorf("HashWithToolVersion() = %s, want different hash when tool version changes", gotNew)
+	}
+}
+
+// TestHashWithToolVersion_sensitiveToValueChanges checks
+// HashWithToolVersion still hashes the rest of v, not just toolVersion:
+// two different values under the same toolVersion must still hash
+// differently.
+func TestHashWithToolVersion_sensitiveToValueChanges(t *testing.T) {
+	a := commentQueryFixture{UserID: 42, MRs: []string{"a"}}
+	b := commentQueryFixture{UserID: 43, MRs: []string{"a"}}
+
+	gotA, err := HashWithToolVersion(a, "v1")
+	if err != nil {
+		t.Fatalf("HashWithToolVersion() error = %v", err)
+	}
+	gotB, err := HashWithToolVersion(b, "v1")
+	if err != nil {
+		t.Fatalf("HashWithToolVersion() error = %v", err)
+	}
+	if gotA == gotB {
+		t.Errorf("HashWithToolVersion() = %s, want different hash for a different UserID", gotB)
+	}
+}
+
+// TestHashWithToolVersion_nonObjectValueIsError guards the documented
+// requirement that v must marshal to a JSON object: a slice has
+// nothing for "tool_version" to join as a sibling key.
+func TestHashWithToolVersion_nonObjectValueIsError(t *testing.T) {
+	_, err := HashWithToolVersion([]int{1, 2, 3}, "v1")
+	if err == nil {
+		t.Fatal("HashWithToolVersion() error = nil, want an error for a non-object value")
+	}
+}
+
+// TestHashWithToolVersion_agreesWithQueryHashShapeForToolVersionKey
+// checks HashWithToolVersion adds the key under the exact same name
+// ("tool_version") QueryHash uses by hand, so both mechanisms remain
+// one convention, not two: hashing a map that already has every field
+// QueryHash's object would have, via each function, agrees.
+func TestHashWithToolVersion_agreesWithQueryHashShapeForToolVersionKey(t *testing.T) {
+	obj := map[string]any{"a": 1, "b": "two"}
+
+	viaHelper, err := HashWithToolVersion(obj, "v1")
+	if err != nil {
+		t.Fatalf("HashWithToolVersion() error = %v", err)
+	}
+
+	objWithVersion := map[string]any{"a": 1, "b": "two", "tool_version": "v1"}
+	viaHash, err := Hash(objWithVersion)
+	if err != nil {
+		t.Fatalf("Hash() error = %v", err)
+	}
+
+	if viaHelper != viaHash {
+		t.Errorf("HashWithToolVersion() = %s, want %s (same as Hash() with tool_version added by hand)", viaHelper, viaHash)
 	}
 }

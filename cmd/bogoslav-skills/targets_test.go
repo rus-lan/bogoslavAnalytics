@@ -62,6 +62,29 @@ func TestFindMCPTarget_familiesMatchTZDoc(t *testing.T) {
 	}
 }
 
+// TestFindMCPTarget_supportsTimeoutMatchesTZDoc covers TZ.md section 9.4:
+// only claude, opencode, and kilo document a per-server timeout field in
+// their own config format; cline and cursor do not, and must not claim
+// to.
+func TestFindMCPTarget_supportsTimeoutMatchesTZDoc(t *testing.T) {
+	want := map[string]bool{
+		"claude":   true,
+		"opencode": true,
+		"kilo":     true,
+		"cline":    false,
+		"cursor":   false,
+	}
+	for id, wantSupports := range want {
+		target, err := findMCPTarget(id)
+		if err != nil {
+			t.Fatalf("findMCPTarget(%q): %v", id, err)
+		}
+		if target.supportsTimeout != wantSupports {
+			t.Errorf("%s supportsTimeout = %v, want %v", id, target.supportsTimeout, wantSupports)
+		}
+	}
+}
+
 func TestMCPTarget_resolveConfigPath(t *testing.T) {
 	tmp := t.TempDir()
 

@@ -32,6 +32,33 @@ const (
 	defaultMaxAttempts = 3
 	defaultBackoffBase = 500 * time.Millisecond
 	defaultBackoffCap  = 30 * time.Second
+
+	// DefaultTimeout is the per-request deadline NewClientFromEnv applies
+	// when BOGOSLAV_TIMEOUT is not set. It bounds one outgoing HTTP round
+	// trip -- one page of a listing, one /discussions call -- not a whole
+	// multi-call operation like a 28-page bruteforce walk: each page gets
+	// its own fresh budget, since c.httpClient.Timeout (what WithTimeout
+	// and this default ultimately set) is enforced fresh on every call to
+	// httpClient.Do, and the retry loop in transport.go calls Do once per
+	// attempt.
+	//
+	// 2 minutes is deliberately generous: a self-managed instance under
+	// real load (large discussion threads, DB contention) can legitimately
+	// take tens of seconds to answer one request, and this value must
+	// outlast that without being mistaken for a hang. It is still finite,
+	// which is the entire point of having a default at all -- a
+	// genuinely dead connection (packets silently dropped by a firewall,
+	// no RST) would otherwise sit on Linux's own TCP retransmission
+	// timeout, which can run well past 15 minutes with no client-level
+	// deadline set at all, exactly the "no Timeout means no client-level
+	// deadline" gap BOGOSLAV_TIMEOUT/--timeout close.
+	DefaultTimeout = 2 * time.Minute
+
+	// timeoutEnvVar is BOGOSLAV_TIMEOUT (TZ.md section 2.5): a Go duration
+	// string ("30s", "2m", ...), or "0" to disable the deadline entirely.
+	// Read only by NewClientFromEnv, mirroring how GITLAB_URL and
+	// GITLAB_TOKEN are read only there and not by NewClient itself.
+	timeoutEnvVar = "BOGOSLAV_TIMEOUT"
 )
 
 // Client is a GitLab REST API v4 client. It owns HTTP transport, offset
@@ -46,6 +73,16 @@ type Client struct {
 	maxAttempts int
 	backoffBase time.Duration
 	backoffCap  time.Duration
+
+	// timeout is nil until WithTimeout is called, so NewClient only ever
+	// touches httpClient.Timeout when a caller actually asked it to --
+	// never overwriting a value a caller-supplied http.Client from
+	// WithHTTPClient already had, the way checkRedirect is always wired
+	// in regardless (that one protects a secret; this one is a UX/
+	// reliability knob with no such reason to be forced). WithTimeout(0)
+	// still sets a non-nil *time.Duration pointing at 0, so it correctly
+	// disables the deadline instead of doing nothing.
+	timeout *time.Duration
 
 	// now and sleep are overridden by tests in this package to make
 	// timing-dependent behavior (the smoke test window, retry waits)
@@ -91,6 +128,36 @@ func WithBackoff(base, cap time.Duration) Option {
 	return func(c *Client) { c.backoffBase = base; c.backoffCap = cap }
 }
 
+// WithTimeout sets the deadline for each individual outgoing HTTP
+// request: one page of a listing, one /discussions call, one retry
+// attempt -- not a whole multi-call app-level operation. It works by
+// setting the underlying http.Client's own Timeout field, which net/http
+// enforces fresh on every call to Client.Do and which covers connect,
+// TLS handshake, sending the request, waiting for response headers, and
+// reading the response body -- every stage a slow GitLab instance can
+// stall on. Zero disables it (net/http's own documented meaning for
+// http.Client.Timeout): the request then has no deadline of its own
+// beyond whatever the caller's context.Context already carries, and a
+// truly hung connection blocks until ctx is canceled or the process is
+// killed.
+//
+// This is independent of ctx cancellation, not a replacement for it:
+// whichever of the two -- this Timeout or ctx.Done() -- fires first wins,
+// exactly as net/http already documents; passing WithTimeout never stops
+// a caller's own context.WithCancel/WithDeadline (or Ctrl-C via
+// signal.NotifyContext) from aborting a request early.
+//
+// Calling WithTimeout is what makes NewClient touch httpClient.Timeout
+// at all: leaving it out keeps this package's original behavior of no
+// client-level deadline (whatever the supplied or default *http.Client's
+// Timeout already was, zero by default), even if a later WithHTTPClient
+// option in the same NewClient call replaces the *http.Client entirely --
+// WithTimeout is always applied last, after every option has run, the
+// same way checkRedirect is (see NewClient).
+func WithTimeout(d time.Duration) Option {
+	return func(c *Client) { c.timeout = &d }
+}
+
 // NewClient builds a client for the given base URL and token. baseURL is
 // used as-is (minus a trailing slash); callers needing the GITLAB_URL /
 // GITLAB_TOKEN environment convention should use NewClientFromEnv.
@@ -122,12 +189,26 @@ func NewClient(baseURL, token string, opts ...Option) *Client {
 	// comment (transport.go) for what this protects and why it is not
 	// optional.
 	c.httpClient.CheckRedirect = c.checkRedirect
+	// Also wired in last, but only if WithTimeout was actually called
+	// (see the field's own doc comment): unlike CheckRedirect, no
+	// timeout is forced on a caller who never asked for one.
+	if c.timeout != nil {
+		c.httpClient.Timeout = *c.timeout
+	}
 	return c
 }
 
 // NewClientFromEnv builds a client from GITLAB_URL (default
-// https://gitlab.com) and GITLAB_TOKEN (required; scope read_api, not
-// api -- this client only ever issues GETs; TZ.md section 2.5).
+// https://gitlab.com), GITLAB_TOKEN (required; scope read_api, not
+// api -- this client only ever issues GETs; TZ.md section 2.5), and
+// BOGOSLAV_TIMEOUT (default DefaultTimeout; "0" disables the per-request
+// deadline entirely -- TZ.md section 2.5).
+//
+// The env-derived timeout is applied via WithTimeout before opts, so any
+// WithTimeout the caller passes in opts (for example bogoslav-cli's
+// --timeout, when the flag was explicitly given) overrides it, the same
+// precedence GITLAB_URL/GITLAB_TOKEN would have if this package ever grew
+// a WithBaseURL/WithToken option: explicit code wins over environment.
 func NewClientFromEnv(opts ...Option) (*Client, error) {
 	baseURL := os.Getenv("GITLAB_URL")
 	if baseURL == "" {
@@ -137,5 +218,47 @@ func NewClientFromEnv(opts ...Option) (*Client, error) {
 	if token == "" {
 		return nil, fmt.Errorf("gitlab: new client from env: %w", ErrMissingToken)
 	}
-	return NewClient(baseURL, token, opts...), nil
+
+	timeout := DefaultTimeout
+	if raw := os.Getenv(timeoutEnvVar); raw != "" {
+		parsed, err := ParseTimeout(raw)
+		if err != nil {
+			return nil, fmt.Errorf("gitlab: new client from env: %s=%q: %w", timeoutEnvVar, raw, err)
+		}
+		timeout = parsed
+	}
+
+	allOpts := make([]Option, 0, len(opts)+1)
+	allOpts = append(allOpts, WithTimeout(timeout))
+	allOpts = append(allOpts, opts...)
+	return NewClient(baseURL, token, allOpts...), nil
+}
+
+// ParseTimeout parses raw as the value of BOGOSLAV_TIMEOUT: any Go
+// duration string time.ParseDuration accepts ("30s", "2m", "1h"), or the
+// bare "0" (also valid input to time.ParseDuration, needing no unit) to
+// disable the deadline. See ValidateTimeout for why a negative value is
+// rejected.
+func ParseTimeout(raw string) (time.Duration, error) {
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("not a valid duration: %w", err)
+	}
+	if err := ValidateTimeout(d); err != nil {
+		return 0, err
+	}
+	return d, nil
+}
+
+// ValidateTimeout rejects a negative duration: net/http does not
+// document what a negative http.Client.Timeout does, and nothing about
+// "disable the deadline" or "a real deadline" is naturally expressed by
+// a negative duration, so this package does not guess at one. Used by
+// ParseTimeout (BOGOSLAV_TIMEOUT) and by bogoslav-cli's --timeout flag,
+// so both entry points reject the same values the same way.
+func ValidateTimeout(d time.Duration) error {
+	if d < 0 {
+		return fmt.Errorf("must not be negative, got %s", d)
+	}
+	return nil
 }

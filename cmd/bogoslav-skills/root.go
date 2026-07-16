@@ -1,6 +1,10 @@
 package main
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/spf13/cobra"
+
+	"github.com/rus-lan/bogoslavAnalytics/internal/clitree"
+)
 
 // newRootCmd builds the bogoslav-skills command tree: generate (skill
 // files only) and install (skill files plus, per target, an MCP
@@ -31,6 +35,7 @@ servers, comments, and formatting already in it survive untouched.`,
 		newGenerateCmd(),
 		newInstallCmd(),
 	)
+	clitree.AddVersionSupport(root)
 
 	return root
 }

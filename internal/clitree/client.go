@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
+
+	"github.com/spf13/cobra"
 
 	"github.com/rus-lan/bogoslavAnalytics/internal/gitlab"
 )
@@ -15,15 +18,35 @@ import (
 // to.
 const defaultGitlabURL = "https://gitlab.com"
 
-// newGitlabClient builds a GitLab client from GITLAB_URL/GITLAB_TOKEN
-// (TZ.md section 2.5), wrapping a missing token in a clear, command-level
-// error instead of letting a nil client reach an app function and panic.
-func newGitlabClient() (*gitlab.Client, error) {
-	client, err := gitlab.NewClientFromEnv()
+// newGitlabClient builds a GitLab client from GITLAB_URL/GITLAB_TOKEN/
+// BOGOSLAV_TIMEOUT (TZ.md section 2.5), wrapping a missing token in a
+// clear, command-level error instead of letting a nil client reach an
+// app function and panic. opts is normally either empty (no --timeout
+// override; BOGOSLAV_TIMEOUT or gitlab.DefaultTimeout wins) or exactly
+// one gitlab.WithTimeout(...), built by timeoutOption from the command's
+// own --timeout flag.
+func newGitlabClient(opts ...gitlab.Option) (*gitlab.Client, error) {
+	client, err := gitlab.NewClientFromEnv(opts...)
 	if err != nil {
 		return nil, fmt.Errorf("connect to GitLab: %w", err)
 	}
 	return client, nil
+}
+
+// timeoutOption returns a gitlab.WithTimeout option built from --timeout,
+// but only when the flag was actually passed: cmd.Flags().Changed keeps
+// an unset --timeout from silently overriding BOGOSLAV_TIMEOUT (or
+// gitlab.DefaultTimeout, if that is unset too) with the flag's own zero
+// value, which would otherwise be indistinguishable from an explicit
+// "--timeout 0s" (disable the deadline entirely).
+func timeoutOption(cmd *cobra.Command, timeout time.Duration) ([]gitlab.Option, error) {
+	if !cmd.Flags().Changed("timeout") {
+		return nil, nil
+	}
+	if err := gitlab.ValidateTimeout(timeout); err != nil {
+		return nil, fmt.Errorf("--timeout: %w", err)
+	}
+	return []gitlab.Option{gitlab.WithTimeout(timeout)}, nil
 }
 
 // resolvedGitlabURL returns GITLAB_URL, or defaultGitlabURL when it is

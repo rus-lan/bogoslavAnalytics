@@ -2,10 +2,13 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // runInstall runs `bogoslav-skills install <args...>` against a fresh
@@ -62,7 +65,9 @@ func TestInstall_claudeWritesSkillAndFamilyAConfig(t *testing.T) {
 	assertFileContains(t, filepath.Join(tmp, ".agents", "skills", serverName, "SKILL.md"), "name: bogoslav")
 
 	config := readFile(t, filepath.Join(tmp, ".mcp.json"))
-	assertSameJSON(t, config, []byte(`{"mcpServers":{"bogoslav":{"command":"/path/to/bogoslav-mcp","args":[],"env":{}}}}`))
+	want := fmt.Sprintf(`{"mcpServers":{"bogoslav":{"command":"/path/to/bogoslav-mcp","args":[],"env":{},"timeout":%d}}}`,
+		defaultMCPTimeout.Milliseconds())
+	assertSameJSON(t, config, []byte(want))
 }
 
 // TestInstall_aiderWritesConventionsAndNoMCPConfig is TZ.md section
@@ -226,6 +231,106 @@ func TestInstall_dryRunWritesNothing(t *testing.T) {
 			t.Errorf("--dry-run created %q", p)
 		}
 	}
+}
+
+// TestInstall_opencodeAndKiloWriteDefaultTimeout covers TZ.md section
+// 9.4 for family B: opencode and kilo both document a per-server
+// "timeout" field, so install must write the default into both, in
+// milliseconds.
+func TestInstall_opencodeAndKiloWriteDefaultTimeout(t *testing.T) {
+	for _, tc := range []struct {
+		target, configFile string
+	}{
+		{"opencode", "opencode.json"},
+		{"kilo", "kilo.jsonc"},
+	} {
+		tmp := t.TempDir()
+		_, _, err := runInstall(t, "--target", tc.target, "--project-dir", tmp, "--mcp-command", "/path/to/bogoslav-mcp")
+		if err != nil {
+			t.Fatalf("%s: install: %v", tc.target, err)
+		}
+
+		got := timeoutFromMCPEntry(t, readFile(t, filepath.Join(tmp, tc.configFile)), "mcp")
+		if got == nil {
+			t.Fatalf("%s: %s has no \"timeout\" key", tc.target, tc.configFile)
+		}
+		if *got != defaultMCPTimeout.Milliseconds() {
+			t.Errorf("%s: timeout = %d, want %d", tc.target, *got, defaultMCPTimeout.Milliseconds())
+		}
+	}
+}
+
+// TestInstall_clineAndCursorNeverWriteTimeout covers the honest half of
+// TZ.md section 9.4: neither cline's nor cursor's own docs name a
+// per-server timeout field, so install must never write one there, even
+// though the same descriptor and default apply to every target in the
+// same --all run.
+func TestInstall_clineAndCursorNeverWriteTimeout(t *testing.T) {
+	tmp := t.TempDir()
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+
+	_, _, err := runInstall(t, "--all", "--project-dir", tmp, "--mcp-command", "/path/to/bogoslav-mcp")
+	if err != nil {
+		t.Fatalf("install --all: %v", err)
+	}
+
+	for _, p := range []string{
+		filepath.Join(tmp, ".cursor", "mcp.json"),
+		filepath.Join(fakeHome, ".cline", "mcp.json"),
+	} {
+		content := readFile(t, p)
+		if bytes.Contains(content, []byte("timeout")) {
+			t.Errorf("%q has a \"timeout\" key, want none: %s", p, content)
+		}
+	}
+}
+
+// TestInstall_mcpTimeoutFlagOverridesDefault covers --mcp-timeout: a
+// user on an even slower GitLab instance must be able to raise the
+// default install would otherwise write.
+func TestInstall_mcpTimeoutFlagOverridesDefault(t *testing.T) {
+	tmp := t.TempDir()
+
+	_, _, err := runInstall(t, "--target", "claude", "--project-dir", tmp,
+		"--mcp-command", "/path/to/bogoslav-mcp", "--mcp-timeout", "2h")
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	got := timeoutFromMCPEntry(t, readFile(t, filepath.Join(tmp, ".mcp.json")), "mcpServers")
+	if got == nil {
+		t.Fatal(".mcp.json has no \"timeout\" key")
+	}
+	if want := (2 * time.Hour).Milliseconds(); *got != want {
+		t.Errorf("timeout = %d, want %d (2h)", *got, want)
+	}
+}
+
+// TestInstall_mcpTimeoutRejectsNonPositive covers validateMCPTimeout:
+// a zero or negative --mcp-timeout must fail install outright rather
+// than silently writing a useless value.
+func TestInstall_mcpTimeoutRejectsNonPositive(t *testing.T) {
+	for _, raw := range []string{"0", "-1h"} {
+		tmp := t.TempDir()
+		_, _, err := runInstall(t, "--target", "claude", "--project-dir", tmp, "--mcp-timeout", raw)
+		if err == nil {
+			t.Errorf("--mcp-timeout %s: expected an error, got nil", raw)
+		}
+	}
+}
+
+// timeoutFromMCPEntry decodes configJSON's <parentKey>.bogoslav.timeout,
+// returning nil if the key is absent.
+func timeoutFromMCPEntry(t *testing.T, configJSON []byte, parentKey string) *int64 {
+	t.Helper()
+	var decoded map[string]map[string]struct {
+		Timeout *int64 `json:"timeout"`
+	}
+	if err := json.Unmarshal(configJSON, &decoded); err != nil {
+		t.Fatalf("decode config: %v\nconfig: %s", err, configJSON)
+	}
+	return decoded[parentKey]["bogoslav"].Timeout
 }
 
 func assertFileContains(t *testing.T, path, substr string) {

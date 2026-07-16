@@ -12,32 +12,53 @@ const (
 	// smokeWindowDays is the recent window the smoke test samples (TZ.md
 	// section 5.5.1: "дефолт: последние 90 дней").
 	smokeWindowDays = 90
-	// smokeMaxCandidates is how many MR candidates the smoke test samples
-	// from the recent events (TZ.md section 5.5.2: "до 5 MR-кандидатов").
-	smokeMaxCandidates = 5
+	// smokeMaxCandidates bounds how many distinct merge requests the smoke
+	// test will fetch /discussions for (TZ.md section 5.5.2). It is a hard
+	// call budget, not a target: every candidate inside the budget is
+	// checked, and only a confirmed undercount stops the scan early --
+	// the bound exists purely to keep worst-case cost fixed, not to cut
+	// the scan short once things look fine so far (see the package doc
+	// comment on SmokeTest for why stopping early on "looks fine" was the
+	// actual defect being fixed here).
+	smokeMaxCandidates = 20
 )
 
-// SmokeTest runs the DiscussionNote instance-capability detection
+// SmokeTest runs the events-API-undercount instance-capability detection
 // described in TZ.md section 5.5: it checks whether this GitLab instance's
-// Events API surfaces DiscussionNote (thread reply) comments, which
-// upstream documentation contradicts itself about. Only the detection
-// lives here; deciding what strategy the result should select is the
-// responsibility of search/'s autoselector (TZ.md section 5.3).
+// Events API silently reports fewer comment events for a merge request
+// than that merge request's /discussions actually holds for the same
+// user and window. Only the detection lives here; deciding what strategy
+// the result should select is the responsibility of search/'s
+// autoselector (TZ.md section 5.3).
 //
 // Procedure:
 //  1. Fetch userID's comment events over the last smokeWindowDays days,
 //     without a target_type filter.
 //  2. Pick up to smokeMaxCandidates merge requests referenced by those
-//     events and fetch their exact /discussions count over the same
-//     window.
-//  3. If any candidate's raw event count for that MR is lower than its
-//     exact discussion count, the events API is losing DiscussionNote
-//     replies: SmokeFailed.
-//  4. If no sampled candidate had any thread-reply notes at all, the
-//     result is inconclusive: SmokeUnknown (the caller must treat this as
+//     events (newest-first, per mrCandidatesFromEvents) and fetch each
+//     one's exact /discussions count over the same window.
+//  3. A candidate is comparable if the user has at least one note (of any
+//     type -- DiscussionNote, DiffNote, or a plain untyped comment) on it
+//     inside the window; a candidate with zero such notes has nothing to
+//     compare against and is skipped without affecting the verdict.
+//  4. Every comparable candidate inside the budget is checked, not just
+//     the first one found: if its raw event count is lower than its
+//     exact /discussions count, the events API is losing notes for this
+//     user on this instance: SmokeFailed, returned immediately. A single
+//     confirmed undercount is sufficient evidence regardless of how many
+//     other candidates looked fine -- this is what the real incident
+//     this test encodes required (see smoke_test.go and TZ.md 5.5.5): a
+//     user whose only affected merge requests are not the first ones
+//     sampled must still get a real verdict, not a false "passed" from
+//     having stopped early on clean candidates.
+//  5. If no candidate in the whole budget was comparable, the result is
+//     inconclusive: SmokeUnknown (the caller must treat this as
 //     equivalent to a failure and fall back to bruteforce, per TZ.md
-//     section 5.5.4 -- that fallback decision itself belongs to search/).
-//  5. Otherwise: SmokePassed.
+//     section 5.5.4 -- that fallback decision itself belongs to
+//     search/). This is meant to be rare: it only happens when the user
+//     genuinely has no recent comment activity the probe can use, not as
+//     a side effect of which merge requests happened to be newest.
+//  6. Otherwise: SmokePassed.
 func (c *Client) SmokeTest(ctx context.Context, userID int64) (domain.SmokeResult, error) {
 	now := c.now().UTC()
 	to := domain.NewDate(now.Year(), now.Month(), now.Day())
@@ -59,23 +80,23 @@ func (c *Client) SmokeTest(ctx context.Context, userID int64) (domain.SmokeResul
 		return domain.SmokeUnknown, nil
 	}
 
-	foundThreadReply := false
+	comparable := false
 	for _, cand := range candidates {
 		discussions, err := c.Discussions(ctx, NumericID(cand.projectID), cand.mrIID)
 		if err != nil && !errors.Is(err, ErrPageLimitReached) {
 			return domain.SmokeUnknown, fmt.Errorf("gitlab: smoke test discussions: %w", err)
 		}
 
-		exact, threadReplies := countUserNotes(discussions, userID, window)
-		if threadReplies == 0 {
+		exact := countUserNotes(discussions, userID, window)
+		if exact == 0 {
 			continue
 		}
-		foundThreadReply = true
+		comparable = true
 		if cand.eventCount < exact {
 			return domain.SmokeFailed, nil
 		}
 	}
-	if !foundThreadReply {
+	if !comparable {
 		return domain.SmokeUnknown, nil
 	}
 	return domain.SmokePassed, nil
@@ -124,9 +145,12 @@ func mrCandidatesFromEvents(events []CommentEvent, max int) []mrCandidate {
 
 // countUserNotes counts, over discussions, the notes authored by userID
 // that are not system notes and fall inside window (the exact count rule
-// of TZ.md section 5.4), and separately counts how many of those are
-// thread replies (Type == domain.NoteTypeDiscussion).
-func countUserNotes(discussions []domain.Discussion, userID int64, window domain.DateRange) (exact, threadReplies int) {
+// of TZ.md section 5.4). Every note type counts -- DiscussionNote,
+// DiffNote, and the untyped plain comment -- because the undercount this
+// probe hunts for is not specific to thread replies: TZ.md section 5.5.3
+// only needs a real note count to compare a raw event count against,
+// whatever kind of note it is.
+func countUserNotes(discussions []domain.Discussion, userID int64, window domain.DateRange) (exact int) {
 	for _, d := range discussions {
 		for _, n := range d.Notes {
 			if n.Author.ID != userID || n.System {
@@ -136,10 +160,7 @@ func countUserNotes(discussions []domain.Discussion, userID int64, window domain
 				continue
 			}
 			exact++
-			if n.Type == domain.NoteTypeDiscussion {
-				threadReplies++
-			}
 		}
 	}
-	return exact, threadReplies
+	return exact
 }

@@ -17,6 +17,14 @@ type familyAEntry struct {
 	Command string            `json:"command"`
 	Args    []string          `json:"args"`
 	Env     map[string]string `json:"env"`
+	// Timeout is the per-server timeout entryJSON's caller resolved for
+	// this target (TZ.md section 9.4), in milliseconds -- the unit every
+	// target that documents this field expects. It stays nil, and
+	// omitempty then drops the key entirely, for a target whose config
+	// format has no such documented field (mcpTarget.supportsTimeout ==
+	// false): the key is absent, not present with a zero or a guessed
+	// value.
+	Timeout *int64 `json:"timeout,omitempty"`
 }
 
 // familyBEntry is one mcp entry (TZ.md section 9.2): opencode's
@@ -30,6 +38,9 @@ type familyBEntry struct {
 	Command     []string          `json:"command"`
 	Enabled     bool              `json:"enabled"`
 	Environment map[string]string `json:"environment"`
+	// Timeout -- see familyAEntry.Timeout; same meaning, same unit, same
+	// omitempty-when-nil behavior.
+	Timeout *int64 `json:"timeout,omitempty"`
 }
 
 // entryJSON renders d as the wire shape for f, 2-space indented so a
@@ -37,13 +48,21 @@ type familyBEntry struct {
 // an existing one) is human-readable. It never marshals a nil slice or
 // map: newDescriptor always hands back non-nil Args/Env, so this always
 // emits "[]"/"{}", never "null".
-func entryJSON(f family, d serverDescriptor) ([]byte, error) {
+//
+// timeoutMillis is the per-server timeout to write, in milliseconds, or
+// nil to omit the field entirely. Callers pass nil for a target whose
+// config format has no documented timeout field (mcpTarget.
+// supportsTimeout == false, TZ.md section 9.4) -- entryJSON itself does
+// not decide that; installOne does, using the target it already looked
+// up.
+func entryJSON(f family, d serverDescriptor, timeoutMillis *int64) ([]byte, error) {
 	switch f {
 	case familyA:
 		return json.MarshalIndent(familyAEntry{
 			Command: d.Command,
 			Args:    d.Args,
 			Env:     d.Env,
+			Timeout: timeoutMillis,
 		}, "", "  ")
 	case familyB:
 		command := make([]string, 0, 1+len(d.Args))
@@ -54,6 +73,7 @@ func entryJSON(f family, d serverDescriptor) ([]byte, error) {
 			Command:     command,
 			Enabled:     true,
 			Environment: d.Env,
+			Timeout:     timeoutMillis,
 		}, "", "  ")
 	default:
 		return nil, fmt.Errorf("mcpconfig: unknown family %d", f)

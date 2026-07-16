@@ -26,10 +26,16 @@ import (
 //
 // GetComments is cached exactly like FindMRs (TZ.md section 4: "every
 // artifact IS a cache"): the query -- user, dates, and the resolved
-// merge request set -- is hashed, and a fresh existing artifact-2 is
-// read back instead of re-fetching. This matters most here, since
-// fetching is one /discussions call per merge request -- the single
-// most call-expensive step in the whole pipeline.
+// merge request set -- is hashed together with ToolVersion via
+// cache.HashWithToolVersion, and a fresh existing artifact-2 is read
+// back instead of re-fetching, unless it was written under a different
+// tool version (TZ.md section 4.6: the same real incident FindMRs's
+// cache.QueryHash guards against applies here too -- a comment_list
+// artifact an old, buggy binary already wrote must not go on answering
+// an identical query from a fixed binary for the rest of its TTL).
+// This matters most here, since fetching is one /discussions call per
+// merge request -- the single most call-expensive step in the whole
+// pipeline.
 type GetCommentsRequest struct {
 	GitlabURL string
 	// User is a numeric id or a username (TZ.md section 5.0); GetComments
@@ -111,7 +117,7 @@ func GetComments(ctx context.Context, client GetCommentsClient, req GetCommentsR
 		FromArtifact: req.FromArtifact,
 	}
 
-	hash, err := cache.Hash(query)
+	hash, err := cache.HashWithToolVersion(query, ToolVersion)
 	if err != nil {
 		return GetCommentsResult{}, fmt.Errorf("get comments: %w", err)
 	}

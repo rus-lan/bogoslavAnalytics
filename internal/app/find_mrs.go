@@ -115,7 +115,7 @@ func FindMRs(ctx context.Context, client FindMRsClient, req FindMRsRequest) (Fin
 		MR:        req.MR,
 	}
 
-	hash, err := cache.QueryHash(query)
+	hash, err := cache.QueryHash(query, ToolVersion)
 	if err != nil {
 		return FindMRsResult{}, fmt.Errorf("find mrs: %w", err)
 	}

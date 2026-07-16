@@ -22,11 +22,21 @@ const (
 
 // mcpTarget is everything install needs for one of the five live,
 // MCP-capable targets: which config family it uses, the object key the
-// server entry lives under, and how to find its config file.
+// server entry lives under, whether its config format has a documented
+// per-server timeout field, and how to find its config file.
 type mcpTarget struct {
 	id        string
 	family    family
 	parentKey string
+	// supportsTimeout is true only for a target whose own documentation
+	// names a per-server timeout field in its config file (TZ.md section
+	// 9.4): claude, opencode, kilo. It stays false for cline and cursor --
+	// not because they are assumed to lack one, but because neither
+	// tool's official docs name a field, a unit, or show one in a config
+	// example; writing an unverified key would be a guess dressed up as a
+	// fix. installOne uses this to decide whether entryJSON gets a
+	// non-nil timeout for this target at all.
+	supportsTimeout bool
 	// resolveConfigPath returns the absolute path of this target's config
 	// file given the project directory install is running against. Cline
 	// ignores projectDir entirely: its config is a single file under the
@@ -44,25 +54,28 @@ const aiderTargetID = "aider"
 // "install --all" iterates in.
 var mcpTargets = []mcpTarget{
 	{
-		id:        "claude",
-		family:    familyA,
-		parentKey: "mcpServers",
+		id:              "claude",
+		family:          familyA,
+		parentKey:       "mcpServers",
+		supportsTimeout: true,
 		resolveConfigPath: func(projectDir string) (string, error) {
 			return filepath.Join(projectDir, ".mcp.json"), nil
 		},
 	},
 	{
-		id:        "opencode",
-		family:    familyB,
-		parentKey: "mcp",
+		id:              "opencode",
+		family:          familyB,
+		parentKey:       "mcp",
+		supportsTimeout: true,
 		resolveConfigPath: func(projectDir string) (string, error) {
 			return firstExistingOrDefault(projectDir, "opencode.json", "opencode.jsonc"), nil
 		},
 	},
 	{
-		id:        "kilo",
-		family:    familyB,
-		parentKey: "mcp",
+		id:              "kilo",
+		family:          familyB,
+		parentKey:       "mcp",
+		supportsTimeout: true,
 		resolveConfigPath: func(projectDir string) (string, error) {
 			return firstExistingOrDefault(projectDir, "kilo.jsonc", filepath.Join(".kilo", "kilo.jsonc")), nil
 		},
@@ -71,6 +84,7 @@ var mcpTargets = []mcpTarget{
 		id:        "cline",
 		family:    familyA,
 		parentKey: "mcpServers",
+		// supportsTimeout stays false: see the field's doc comment above.
 		resolveConfigPath: func(string) (string, error) {
 			home, err := os.UserHomeDir()
 			if err != nil {
@@ -83,6 +97,7 @@ var mcpTargets = []mcpTarget{
 		id:        "cursor",
 		family:    familyA,
 		parentKey: "mcpServers",
+		// supportsTimeout stays false: see the field's doc comment above.
 		resolveConfigPath: func(projectDir string) (string, error) {
 			return filepath.Join(projectDir, ".cursor", "mcp.json"), nil
 		},

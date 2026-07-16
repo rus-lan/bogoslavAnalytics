@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/rus-lan/bogoslavAnalytics/internal/artifact"
+	"github.com/rus-lan/bogoslavAnalytics/internal/gitlab"
 )
 
 // commonOutputFlags are the three flags every command in this tree
@@ -98,6 +99,26 @@ func addCacheFlags(cmd *cobra.Command, f *cacheFlags) {
 		"bypass the cache and always call GitLab, even if a fresh cached artifact exists")
 	cmd.Flags().DurationVar(&f.ttl, "cache-ttl", 0,
 		`how long a cached artifact stays fresh, for example "24h" (default 24h)`)
+}
+
+// addTimeoutFlag registers --timeout on cmd, storing its value in d. It
+// is only added to commands that build a GitLab client at all (find-mrs,
+// get-comments, filter-comments): every other command never calls
+// GitLab, so the flag would look like it does something but never does
+// (the same reasoning addCacheFlags's doc comment already gives for
+// --refresh/--cache-ttl).
+//
+// The flag's own zero value (unset) is deliberately indistinguishable
+// from an explicit "--timeout 0s" only in the raw time.Duration -- the
+// two are told apart by cmd.Flags().Changed("timeout"), in
+// newGitlabClient's caller, not here.
+func addTimeoutFlag(cmd *cobra.Command, d *time.Duration) {
+	cmd.Flags().DurationVar(d, "timeout", 0,
+		`per-request deadline for each call to GitLab -- one page of a listing, one `+
+			`/discussions call, one retry attempt, not the whole command (covers connect, TLS, `+
+			`sending the request, and reading the response), for example "60s" or "5m"; unset `+
+			`uses BOGOSLAV_TIMEOUT if set, or else `+gitlab.DefaultTimeout.String()+`; `+
+			`"0s" disables it entirely and waits as long as GitLab takes`)
 }
 
 // parseFormat validates s against the four artifact wire formats
