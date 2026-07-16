@@ -31,6 +31,18 @@ type MergeRequestSummary struct {
 	UserNotesCount int `json:"user_notes_count"`
 }
 
+// scopeAll is the literal value sent for the scope merge request list
+// parameter (18.11 docs) on all three list endpoints. Its documented
+// DEFAULTS differ by endpoint: the global "GET /merge_requests" defaults
+// scope to "created_by_me" -- a NARROWING default that silently drops every
+// merge request the token owner did not author, even one carrying the
+// target user's comments -- while "GET /groups/:id/merge_requests" and
+// "GET /projects/:id/merge_requests" both already default to "all". Setting
+// "all" explicitly on all three removes the one per-endpoint default this
+// package would otherwise have to keep remembering, and is a no-op on the
+// two endpoints where "all" was already the default.
+const scopeAll = "all"
+
 // nonArchivedFalse is the literal value sent for the non_archived merge
 // request list parameter (18.11 docs). The two endpoints that carry it
 // document different DEFAULTS: "GET /groups/:id/merge_requests" defaults
@@ -54,6 +66,10 @@ const nonArchivedFalse = "false"
 // request listing. The "view" parameter is never set: leaving it unset
 // keeps the default view, which is required for user_notes_count to be
 // present (TZ.md section 5.2.3: "view=simple использовать нельзя").
+// "scope" is always sent as scopeAll (see its doc comment): this is the
+// single method shared by MergeRequests, GroupMergeRequests and
+// ProjectMergeRequests, so setting it here covers all three list
+// endpoints at once.
 //
 // created_before/updated_after are sent as whole-second RFC 3339 with a Z
 // offset ("2019-03-15T08:00:00Z"), matching the only documented example
@@ -65,6 +81,7 @@ func (w MergeRequestWindow) query(page int) url.Values {
 	q := url.Values{}
 	q.Set("created_before", formatMRDateTime(w.CreatedBefore.End()))
 	q.Set("updated_after", formatMRDateTime(w.UpdatedAfter.Start()))
+	q.Set("scope", scopeAll)
 	q.Set("per_page", strconv.Itoa(perPage))
 	q.Set("page", strconv.Itoa(page))
 	return q
@@ -78,7 +95,10 @@ func formatMRDateTime(t time.Time) string {
 
 // MergeRequests lists merge requests across every project visible to the
 // token via GET /merge_requests (TZ.md section 5.2.1). non_archived=false
-// is always sent explicitly (see nonArchivedFalse).
+// is always sent explicitly (see nonArchivedFalse). scope=all is always
+// sent explicitly too (see scopeAll) -- this endpoint is the one where
+// that matters: left unset, GitLab defaults scope to created_by_me and
+// silently drops every merge request the token owner did not author.
 func (c *Client) MergeRequests(ctx context.Context, window MergeRequestWindow) ([]MergeRequestSummary, error) {
 	return c.listMergeRequests(ctx, "/merge_requests", window, true)
 }
@@ -86,7 +106,9 @@ func (c *Client) MergeRequests(ctx context.Context, window MergeRequestWindow) (
 // GroupMergeRequests lists merge requests scoped to a group via
 // GET /groups/:id/merge_requests (TZ.md section 5.2.1). group may be a
 // numeric id or a namespaced path (ID). non_archived=false is always sent
-// explicitly (see nonArchivedFalse).
+// explicitly (see nonArchivedFalse). scope=all is also sent (see
+// scopeAll), though it is a no-op here since this endpoint already
+// defaults to scope=all.
 func (c *Client) GroupMergeRequests(ctx context.Context, group ID, window MergeRequestWindow) ([]MergeRequestSummary, error) {
 	return c.listMergeRequests(ctx, fmt.Sprintf("/groups/%s/merge_requests", group.segment()), window, true)
 }
@@ -95,7 +117,9 @@ func (c *Client) GroupMergeRequests(ctx context.Context, group ID, window MergeR
 // GET /projects/:id/merge_requests (TZ.md section 5.2.1). project may be a
 // numeric id or a namespaced path (ID). Unlike MergeRequests and
 // GroupMergeRequests, non_archived is never sent here: it is not a
-// documented parameter of this endpoint (see nonArchivedFalse).
+// documented parameter of this endpoint (see nonArchivedFalse). scope=all
+// is still sent (see scopeAll), though it is a no-op here since this
+// endpoint already defaults to scope=all.
 func (c *Client) ProjectMergeRequests(ctx context.Context, project ID, window MergeRequestWindow) ([]MergeRequestSummary, error) {
 	return c.listMergeRequests(ctx, fmt.Sprintf("/projects/%s/merge_requests", project.segment()), window, false)
 }

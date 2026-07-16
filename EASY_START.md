@@ -5,12 +5,14 @@
 Рекомендуемый способ — без Go-тулчейна вообще (инструмент рассчитан на unattended-запуск в CI/CD):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rus-lan/bogoslavAnalytics/v0.2.0/install.sh | sh
+curl -fsSL https://github.com/rus-lan/bogoslavAnalytics/releases/latest/download/install.sh | sh
 ```
+
+(Не `raw.githubusercontent.com`: этот хост многие корпоративные прокси блокируют отдельно, а `github.com/.../releases/latest/download/...` — тот же хост, откуда идут и сами бинарники.)
 
 Вывод:
 ```
-installing bogoslav (tag v0.2.0) for linux/amd64
+installing bogoslav (tag v0.2.1) for linux/amd64
 
 installed: bogoslav-cli bogoslav-mcp bogoslav-skills
 into: /home/<user>/.local/bin
@@ -24,7 +26,7 @@ note: ... is not on your PATH; add it, e.g.: export PATH="...:$PATH"
 Для CI — версию фиксировать, а не тянуть `latest`: так сборка остаётся воспроизводимой, новый релиз не может незаметно поменять то, что реально запускается.
 
 ```bash
-BOGOSLAV_VERSION=v0.2.0 sh -c "$(curl -fsSL https://raw.githubusercontent.com/rus-lan/bogoslavAnalytics/v0.2.0/install.sh)"
+BOGOSLAV_VERSION=v0.2.1 sh -c "$(curl -fsSL https://github.com/rus-lan/bogoslavAnalytics/releases/download/v0.2.1/install.sh)"
 ```
 
 Переменные окружения: `BOGOSLAV_VERSION` (версия), `BOGOSLAV_INSTALL_DIR` (куда ставить, по умолчанию `$HOME/.local/bin`), `BOGOSLAV_BINS` (поставить не все три бинарника, а подмножество), `BOGOSLAV_ALLOW_NO_CHECKSUM` (ставить без проверки контрольных сумм).

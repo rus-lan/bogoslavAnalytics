@@ -39,6 +39,7 @@ func TestClient_MergeRequests_windowPredicateParams(t *testing.T) {
 		path                   string
 		wantNonArchivedPresent bool
 		wantNonArchivedValue   string
+		wantParamKeys          []string
 	}{
 		{
 			"global list",
@@ -47,6 +48,7 @@ func TestClient_MergeRequests_windowPredicateParams(t *testing.T) {
 			},
 			"/api/v4/merge_requests",
 			true, "false",
+			[]string{"created_before", "non_archived", "page", "per_page", "scope", "updated_after"},
 		},
 		{
 			"group list",
@@ -55,6 +57,7 @@ func TestClient_MergeRequests_windowPredicateParams(t *testing.T) {
 			},
 			"/api/v4/groups/9/merge_requests",
 			true, "false",
+			[]string{"created_before", "non_archived", "page", "per_page", "scope", "updated_after"},
 		},
 		{
 			"project list",
@@ -63,6 +66,7 @@ func TestClient_MergeRequests_windowPredicateParams(t *testing.T) {
 			},
 			"/api/v4/projects/123/merge_requests",
 			false, "",
+			[]string{"created_before", "page", "per_page", "scope", "updated_after"},
 		},
 	}
 
@@ -114,6 +118,34 @@ func TestClient_MergeRequests_windowPredicateParams(t *testing.T) {
 				t.Errorf("non_archived = %v, want literally [%q]", gotValue, tc.wantNonArchivedValue)
 			}
 
+			// scope must be sent as literally "all" on every list
+			// endpoint: the global GET /merge_requests defaults scope
+			// to created_by_me when the param is absent, silently
+			// dropping every merge request the token owner did not
+			// author (see scopeAll's doc comment). The other two
+			// endpoints already default to "all", so this is a no-op
+			// there, but it is asserted identically on all three so
+			// none of them can regress independently.
+			if gotScope := gotQuery.Get("scope"); gotScope != "all" {
+				t.Errorf("scope = %q, want literally \"all\"", gotScope)
+			}
+
+			// Full param-set assertion, not an allowlist: any param a
+			// future change adds, removes, or forgets (such as the
+			// missing scope=all that caused the original bug) changes
+			// this set and fails here, rather than staying invisible
+			// because nobody thought to assert it individually.
+			gotKeys := make([]string, 0, len(gotQuery))
+			for k := range gotQuery {
+				gotKeys = append(gotKeys, k)
+			}
+			slices.Sort(gotKeys)
+			wantKeys := slices.Clone(tc.wantParamKeys)
+			slices.Sort(wantKeys)
+			if !slices.Equal(gotKeys, wantKeys) {
+				t.Errorf("%s query param set = %v, want exactly %v", tc.name, gotKeys, wantKeys)
+			}
+
 			if len(items) != 1 {
 				t.Fatalf("returned %d items, want 1", len(items))
 			}
@@ -128,6 +160,87 @@ func TestClient_MergeRequests_windowPredicateParams(t *testing.T) {
 				t.Errorf("Author.ID = %d, want 42", mr.Author.ID)
 			}
 		})
+	}
+}
+
+// tokenOwnerAuthorID and colleagueAuthorID are the two merge request
+// authors used by the fake server in
+// TestClient_MergeRequests_globalListReturnsOtherAuthorsMRWhenNoScopeGiven.
+const (
+	tokenOwnerAuthorID = 1
+	colleagueAuthorID  = 2
+)
+
+// fakeGlobalMRScopeServer implements the documented GitLab 18.11 default
+// for GET /merge_requests: with scope absent, it returns only merge
+// requests authored by the token owner ("created_by_me"); with
+// scope=all, it returns every merge request regardless of author. This is
+// what the earlier fixture-based fake in this file could never catch --
+// that fake ignored the query and returned the same fixture either way,
+// so a missing scope param was invisible to it.
+func fakeGlobalMRScopeServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ownerMR := map[string]any{
+			"project_id": 1, "iid": 10, "title": "own work", "web_url": "u1",
+			"created_at": "2026-07-01T00:00:00Z", "updated_at": "2026-07-01T00:00:00Z",
+			"author":           map[string]any{"id": tokenOwnerAuthorID, "username": "token-owner"},
+			"user_notes_count": 0,
+		}
+		colleagueMR := map[string]any{
+			"project_id": 2, "iid": 20, "title": "colleague's MR", "web_url": "u2",
+			"created_at": "2026-07-02T00:00:00Z", "updated_at": "2026-07-02T00:00:00Z",
+			"author": map[string]any{"id": colleagueAuthorID, "username": "colleague"},
+			// Non-zero user_notes_count stands in for the 4 comments the
+			// target user left on this merge request: exactly the
+			// merge request the reported bug dropped at the list
+			// stage, before /discussions was ever fetched.
+			"user_notes_count": 4,
+		}
+
+		switch r.URL.Query().Get("scope") {
+		case "":
+			writeJSON(t, w, []map[string]any{ownerMR})
+		case "all":
+			writeJSON(t, w, []map[string]any{ownerMR, colleagueMR})
+		default:
+			t.Fatalf("unexpected scope = %q", r.URL.Query().Get("scope"))
+		}
+	}))
+}
+
+// TestClient_MergeRequests_globalListReturnsOtherAuthorsMRWhenNoScopeGiven
+// is the behavioral regression test for the reported bug: a user searched
+// for a colleague's comments over a date window with no --group/--project,
+// and got back only merge requests the TOKEN OWNER had created. The
+// colleague's merge request, carrying 4 comments by the target user, was
+// dropped at the list stage. Removing the scope=all query.Set call from
+// MergeRequestWindow.query must fail this test.
+func TestClient_MergeRequests_globalListReturnsOtherAuthorsMRWhenNoScopeGiven(t *testing.T) {
+	srv := fakeGlobalMRScopeServer(t)
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "token")
+	window := MergeRequestWindow{
+		CreatedBefore: domain.NewDate(2026, time.July, 16),
+		UpdatedAfter:  domain.NewDate(2026, time.July, 13),
+	}
+	items, err := c.MergeRequests(t.Context(), window)
+	if err != nil {
+		t.Fatalf("MergeRequests() error = %v", err)
+	}
+
+	var sawColleagueMR bool
+	for _, mr := range items {
+		if mr.Author.ID == colleagueAuthorID && mr.ProjectID == 2 && mr.IID == 20 {
+			sawColleagueMR = true
+			if mr.UserNotesCount != 4 {
+				t.Errorf("colleague's MR user_notes_count = %d, want 4", mr.UserNotesCount)
+			}
+		}
+	}
+	if !sawColleagueMR {
+		t.Fatalf("MergeRequests() = %+v, want it to include the colleague-authored merge request carrying the target user's comments (scope=all must be sent, or GitLab's created_by_me default silently drops it)", items)
 	}
 }
 

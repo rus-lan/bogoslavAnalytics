@@ -32,9 +32,68 @@ find-mrs  →  get-comments  →  get-classify-batch  →  save-labels  →  fil
 
 ## 2. Установка и настройка
 
-### Готовые бинари (`go install`)
+### Установочный скрипт (`install.sh`) — основной путь
 
-Версии публикуются как обычные git-теги вида `v0.2.0` — отдельного GitHub Release нет и не требуется, публичному прокси модулей (`proxy.golang.org`) достаточно самого тега. Модуль лежит в корне репозитория, поэтому теги плоские (`v0.2.0`), без префикса подкаталога — Go Modules Reference требует префиксный тег (вида `<subdir>/vX.Y.Z`) только для модуля, объявленного не в корне репозитория; для корневого модуля префикс не нужен:
+Основной способ установки не требует Go-тулчейна вообще — инструмент рассчитан в первую очередь на unattended-запуск в CI/CD, где ставить Go только ради трёх бинарей не нужно и не всегда возможно:
+
+```bash
+curl -fsSL https://github.com/rus-lan/bogoslavAnalytics/releases/latest/download/install.sh | sh
+```
+
+Проверено вживую (реальный вывод):
+
+```
+installing bogoslav (tag v0.2.1) for linux/amd64
+
+installed: bogoslav-cli bogoslav-mcp bogoslav-skills
+into: /home/<user>/.local/bin
+```
+
+**Важно про URL: это `github.com/.../releases/download/...`, не `raw.githubusercontent.com`.** Разница не косметическая: у одного реального пользователя `raw.githubusercontent.com` подвисал — корпоративные прокси нередко блокируют именно этот хост отдельно, пропуская при этом GitHub Releases. Release-URL к тому же держит сам скрипт и бинарники на одном хосте. Не меняйте на `raw.githubusercontent.com`, даже если это выглядит как более "прямой" адрес.
+
+Без явного тега в URL и без `BOGOSLAV_VERSION` скрипт резолвит `latest` через redirect `releases/latest` → `releases/tag/<tag>` (без похода в GitHub API и без `jq`, которого может не быть в минимальном CI-образе). Для CI это стоит зафиксировать явно — см. переменные окружения ниже.
+
+**Переменные окружения** (проверены по тексту `install.sh`):
+
+| Переменная | Дефолт | Что делает |
+|---|---|---|
+| `BOGOSLAV_VERSION` | резолвится как `latest`-релиз | версия для установки, например `v0.2.1` — используется как тег релиза как есть, без добавления префикса |
+| `BOGOSLAV_INSTALL_DIR` | `$HOME/.local/bin` | куда ставить бинари |
+| `BOGOSLAV_BINS` | все три (`bogoslav-cli bogoslav-mcp bogoslav-skills`) | поставить не все бинари, а подмножество через пробел, например `"bogoslav-cli bogoslav-mcp"` |
+| `BOGOSLAV_ALLOW_NO_CHECKSUM` | не задана (т.е. отказ) | при `1` — ставить, даже если на машине нет ни `sha256sum`, ни `shasum` |
+
+CI-форма, с закреплённой версией:
+
+```bash
+BOGOSLAV_VERSION=v0.2.1 sh -c "$(curl -fsSL https://github.com/rus-lan/bogoslavAnalytics/releases/download/v0.2.1/install.sh)"
+```
+
+Проверено вживую — тот же вывод, что и выше, только без строки про резолв `latest`:
+
+```
+installing bogoslav (tag v0.2.1) for linux/amd64
+
+installed: bogoslav-cli bogoslav-mcp bogoslav-skills
+into: /home/<user>/.local/bin
+```
+
+Ставит бинари в `BOGOSLAV_INSTALL_DIR` (по умолчанию `~/.local/bin`) — эта директория должна быть в `PATH`; если её там нет, скрипт сам об этом напоминает строкой `note: ... is not on your PATH`.
+
+**Платформы: linux/darwin × amd64/arm64, Windows не поддерживается.** Определение платформы идёт через `uname -s`/`uname -m` — у Windows нет POSIX `uname` в осмысленном для скрипта виде, поэтому платформа явно ограничена этими двумя ОС и двумя архитектурами; любая другая комбинация завершается ошибкой `unsupported OS`/`unsupported architecture` до всякой загрузки. Linux-сборки статические и работают в `alpine`/`scratch`-образах CI без дополнительных системных библиотек.
+
+**Проверка контрольных сумм.** Перед установкой скрипт скачивает `SHA256SUMS` того же релиза и сверяет SHA-256 каждого из скачанных бинарей с записью в этом файле — при несовпадении установка прерывается с `checksum mismatch`. Если на машине нет ни `sha256sum`, ни `shasum`, скрипт по умолчанию тоже отказывается ставить (`neither sha256sum nor shasum found ... refusing to install unverified binaries`); обойти это можно только явно — `BOGOSLAV_ALLOW_NO_CHECKSUM=1`, и тогда бинари ставятся без проверки, о чём скрипт предупреждает в stderr.
+
+**Честно: эта проверка защищает бинарники, не сам скрипт.** У `SHA256SUMS` нет подписи, покрывающей сам `install.sh`, — значит скомпрометированный хост или MITM на сети всё ещё теоретически может подменить то, что вы реально запускаете через `curl | sh`. Прочитать скрипт перед запуском можно так же, как любой другой перед выполнением:
+
+```bash
+curl -fsSL https://github.com/rus-lan/bogoslavAnalytics/releases/latest/download/install.sh | less
+```
+
+Для CI отсюда прямое следствие — фиксировать `BOGOSLAV_VERSION`, а не тянуть `latest`: так сборка остаётся воспроизводимой, и новый релиз не может незаметно поменять то, что реально выполняется в пайплайне (см. CI-форму выше).
+
+### `go install` — альтернатива для тех, у кого уже стоит Go
+
+Версии публикуются как обычные git-теги вида `v0.2.0` — отдельного GitHub Release для `go install` не нужно, публичному прокси модулей (`proxy.golang.org`) достаточно самого тега. Модуль лежит в корне репозитория, поэтому теги плоские (`v0.2.0`), без префикса подкаталога — Go Modules Reference требует префиксный тег (вида `<subdir>/vX.Y.Z`) только для модуля, объявленного не в корне репозитория; для корневого модуля префикс не нужен:
 
 ```bash
 go install github.com/rus-lan/bogoslavAnalytics/cmd/bogoslav-cli@latest
